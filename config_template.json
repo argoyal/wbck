@@ -1,0 +1,29 @@
+{
+	"name": "",
+	"enabled": 0,
+	"target_path": "",
+	"codes": {
+		"client": {
+			"ml-apps": [],
+			"web-apps": [],
+			"infra-apps": [],
+			"wikis": []
+		},
+		"internal": {
+			"ml-apps": [],
+			"web-apps": [],
+			"infra-apps": [],
+			"wikis": []
+		}
+	},
+	"workplace_settings": {
+		"s3": {
+			"folders_to_maintain": [
+				"documents",
+				"codes/configs",
+				"custom-scripts"
+			],
+			"files_to_ignore": []
+		}
+	}
+}

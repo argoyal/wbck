@@ -1,0 +1,4 @@
+.envrc
+configs/*.json
+__pycache__
+*.pyc
