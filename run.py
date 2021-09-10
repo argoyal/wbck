@@ -5,20 +5,30 @@ from app.aws import download_data, upload_data
 from app.templates import create_template
 
 
-def setup_applications():
+def setup_applications(app=None):
     config_data = load_config()
+
+    if app:
+        config_data = list(filter(lambda x: x["name"] == app, config_data))
+
     list(map(clone_repositories, config_data))
     list(map(download_data, config_data))
 
 
-def sync_applications():
+def sync_applications(app=None):
     config_data = load_config()
+
+    if app:
+        config_data = list(filter(lambda x: x["name"] == app, config_data))
 
     list(map(upload_data, config_data))
 
 
-def create_new_workspace():
+def create_new_workspace(app=None):
     config_data = load_config()
+
+    if app:
+        config_data = list(filter(lambda x: x["name"] == app, config_data))
 
     list(map(create_template, config_data))
 
@@ -31,24 +41,21 @@ if __name__ == "__main__":
     parser.add_argument(
         "--setup",
         help="setup all the active workspaces",
-        action="store_true"
     )
     parser.add_argument(
         "--sync",
         help="sync all the active workspaces",
-        action="store_true"
     )
     parser.add_argument(
         "--add",
         help="creates a specific path of workspace using structure",
-        action="store_true"
     )
 
     args = vars(parser.parse_args())
 
     if args["setup"]:
-        setup_applications()
+        setup_applications(args["setup"])
     if args["sync"]:
-        sync_applications()
+        sync_applications(args["sync"])
     if args["add"]:
-        create_new_workspace()
+        create_new_workspace(args["add"])
