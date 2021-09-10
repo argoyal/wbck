@@ -20,9 +20,10 @@ You are good to go.
 A template configuration is available in `config_template.json`.
 You need to configure the repository urls that you want to keep a track of.
 The project is configured to have any folder-names for eg. `ml-apps`, `web-apps` etc.
-The subnesting under these folder-names is `client` and `internal` in each of these folders which again you can configure as per your needs.
+Since each of these kinds of application can be subdivided under `client` and `internal`.
+Again all of this is still configurable.
 
-Once your configuration file is created you have to keep it under the folder - configs
+Once your configuration file is created you have to keep it under the folder - `configs`
 You can keep a backup of these config files and reuse it when you want to restore this to a different system.
 
 # Environment Variables
