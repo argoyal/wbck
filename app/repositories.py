@@ -1,8 +1,24 @@
 import os
+import re
 
 
 def clone_repository(url, target):
     os.system("git clone {} {} > /dev/null 2>&1".format(url, target))
+
+
+def get_repo_name(repo_url):
+    """
+    handling wierd case when your git repo name has dots in it
+    plus another weird scenario when your repository name is
+    xyz.github.io.git
+    """
+
+    last_part = repo_url.split("/")[-1]
+    pattern = re.compile(r'(.*?)\.git$')
+
+    repo_name = pattern.search(last_part).group(1)
+
+    return repo_name.lower().replace("_", "-")
 
 
 def clone_repositories(config_data):
@@ -19,8 +35,7 @@ def clone_repositories(config_data):
     for source, apps in codes.items():
         for app_type, repo_urls in apps.items():
             for repo_url in repo_urls:
-                repo_name = repo_url.split("/")[-1].split(".")[0].lower()\
-                    .replace("_", "-")
+                repo_name = get_repo_name(repo_url)
                 clone_path = os.path.join(
                     target_path, folder_name, "codes",
                     app_type, source, repo_name
