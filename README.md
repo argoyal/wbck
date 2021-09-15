@@ -5,7 +5,7 @@ Running all the commands again, cloning all the projects again, backing up your 
 it is a nightmare.
 
 This is a simple application for easy backup and restoration of project workspaces.
-There is not much you can do with the app right now but yet it is powerful enough to save your workspaces.
+There is not much you can do with the app right now but yet it is powerful enough to achieve some of the most trivial actions.
 The structure of a sample workspace I prefer can be found in the structure directory. The current cloud where the
 backup goes is AWS. Hope to see collaborators to add more sources - Gdrive, Azure etc.
 
