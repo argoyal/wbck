@@ -16,7 +16,10 @@ def get_repo_name(repo_url):
     last_part = repo_url.split("/")[-1]
     pattern = re.compile(r'(.*?)\.git$')
 
-    repo_name = pattern.search(last_part).group(1)
+    try:
+        repo_name = pattern.search(last_part).group(1)
+    except Exception:
+        repo_name = last_part
 
     return repo_name.lower().replace("_", "-")
 

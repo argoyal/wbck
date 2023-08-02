@@ -3,3 +3,5 @@ configs/*.json
 __pycache__
 *.pyc
 .venv
+*.zip
+.DS_Store
