@@ -1,71 +1,71 @@
+import os
 import argparse
-from app.load_config import load_config
-from app.repositories import clone_repositories
-from app.aws import download_data, upload_data
-from app.local import local_upload_data, local_download_data
-from app.templates import create_template
+from app.runners import backup_data, restore_data, setup_from_template
+from app.load_config import is_config_loadable
 
 
-def setup_applications(app=None):
-    config_data = load_config()
-
-    if app:
-        config_data = list(filter(lambda x: x["name"] == app, config_data))
-
-    list(map(clone_repositories, config_data))
-
-    for config_datum in config_data:
-        if "s3" in config_datum["workplace_settings"]:
-            list(map(download_data, config_data))
-        if "local" in config_datum["workplace_settings"]:
-            list(map(local_download_data, config_data))
+def restore_workspace(args):
+    is_config_loadable(args.config_path)
+    restore_data(args.config_path)
 
 
-def sync_applications(app=None):
-    config_data = load_config()
-
-    if app:
-        config_data = list(filter(lambda x: x["name"] == app, config_data))
-
-    for config_datum in config_data:
-        if "s3" in config_datum["workplace_settings"]:
-            list(map(upload_data, config_data))
-        if "local" in config_datum["workplace_settings"]:
-            list(map(local_upload_data, config_data))
+def backup_workspace(args):
+    is_config_loadable(args.config_path)
+    backup_data(args.config_path)
 
 
-def create_new_workspace(app=None):
-    config_data = load_config()
-
-    if app:
-        config_data = list(filter(lambda x: x["name"] == app, config_data))
-
-    list(map(create_template, config_data))
+def create_new_workspace(args):
+    setup_from_template(args.name, args.workspace_path, args.config_folder)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description='Application to sync my workspace data using config files'
+        description='Application to backup and restore my workspace data using config files'
     )
+    subparsers = parser.add_subparsers(title="Commands")
 
-    parser.add_argument(
-        "--setup",
-        help="setup all the active workspaces",
+    create_parser = subparsers.add_parser(
+        "create",
+        help="creates a new workspace"
     )
-    parser.add_argument(
-        "--sync",
-        help="sync all the active workspaces",
+    create_parser.add_argument(
+        "--name",
+        required=True,
+        help="name of the new workspace"
     )
-    parser.add_argument(
-        "--add",
-        help="creates a specific path of workspace using structure",
+    create_parser.add_argument(
+        "--workspace-path",
+        default=os.path.expanduser("~"),
+        help="path where the workspace needs to be created"
     )
+    create_parser.add_argument(
+        "--config-folder",
+        required=True,
+        help="path where the config for this workspace is"
+    )
+    create_parser.set_defaults(func=create_new_workspace)
 
-    args = vars(parser.parse_args())
+    backup_parser = subparsers.add_parser(
+        "backup",
+        help="commands pertaining to backup of your workspaces"
+    )
+    backup_parser.add_argument(
+        "--config-path",
+        required=True,
+        help="path where the config for this workspace is"
+    )
+    backup_parser.set_defaults(func=backup_workspace)
 
-    if args["setup"]:
-        setup_applications(args["setup"])
-    if args["sync"]:
-        sync_applications(args["sync"])
-    if args["add"]:
-        create_new_workspace(args["add"])
+    restore_parser = subparsers.add_parser(
+        "restore",
+        help="commands pertaining to restore of your workspaces"
+    )
+    restore_parser.add_argument(
+        "--config-path",
+        required=True,
+        help="path where the config for this workspace is"
+    )
+    restore_parser.set_defaults(func=restore_workspace)
+
+    args = parser.parse_args()
+    args.func(args)

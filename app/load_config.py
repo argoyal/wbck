@@ -1,4 +1,3 @@
-import os
 import json
 
 
@@ -8,16 +7,6 @@ def _is_enabled(_file):
     return bool(data["enabled"])
 
 
-def get_enabled_configs(path):
-    _files = os.listdir(path)
-    _files = list(map(lambda x: "configs/{}".format(x), _files))
-    _files = list(filter(lambda x: ".json" in x, _files))
-
-    return list(filter(_is_enabled, _files))
-
-
-def load_config():
-    config_path = "configs"
-    configs = get_enabled_configs(config_path)
-
-    return list(map(lambda x: json.load(open(x)), configs))
+def is_config_loadable(config_path):
+    if not _is_enabled(config_path):
+        raise SystemError("The configuration file is not enabled")
