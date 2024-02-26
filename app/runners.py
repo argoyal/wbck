@@ -74,6 +74,6 @@ def restore_data(config_path):
 
     clone_repositories(config_data)
 
-    # for src in enabled_sources:
-    #     print("Backing up data using {}".format(src))
-    #     class_mapping[src].restore_data()
+    for src in enabled_sources:
+        print("Backing up data using {}".format(src))
+        class_mapping[src].restore_data()
