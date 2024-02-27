@@ -5,3 +5,7 @@ __pycache__
 .venv
 *.zip
 .DS_Store
+build/
+dist/
+wbck.egg-info
+.vscode

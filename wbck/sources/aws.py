@@ -1,7 +1,4 @@
-import os
 import boto3
-import shutil
-import zipfile
 
 from .base import BaseSource
 
