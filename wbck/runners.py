@@ -1,8 +1,7 @@
 import os
 import json
 import shutil
-from .sources.aws import AwsSource
-from .sources.local import LocalSource
+from .sources import AwsSource, LocalSource
 from .repositories import clone_repositories
 
 

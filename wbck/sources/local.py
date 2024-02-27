@@ -1,7 +1,5 @@
 import os
 import shutil
-import zipfile
-from ..utils import zipdir
 from .base import BaseSource
 
 
