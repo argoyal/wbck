@@ -48,27 +48,27 @@ Create a configuration file (`wbck.yaml` by default) in your workspace directory
 
 ```yaml
 {
-	"name": "",
-	"enabled": 1,
-	"workspace_path": "",
-	"repositories": [{
-		"clone_name": "workspace-backup",
-		"clone_path": "codes/internal",
-		"repo_url": "https://github.com/argoyal/workspace-backup.git"
-	}],
-	"source_settings": {
-		"enabled_sources": ["s3", "local"],
-		"folders_to_maintain": [],
-		"files_to_exclude": [],
-		"s3": {
-			"bucket_name": "",
-			"aws_key": "",
-			"aws_secret": ""
-		},
-		"local": {
-			"local_path": ""
-		}
-	}
+  "name": "",
+  "enabled": 1,
+  "workspace_path": "",
+  "repositories": [{
+    "clone_name": "workspace-backup",
+    "clone_path": "codes/internal",
+    "repo_url": "https://github.com/argoyal/workspace-backup.git"
+  }],
+  "source_settings": {
+    "enabled_sources": ["s3", "local"],
+    "folders_to_maintain": [],
+    "files_to_exclude": [],
+    "s3": {
+      "bucket_name": "",
+      "aws_key": "",
+      "aws_secret": ""
+    },
+    "local": {
+      "local_path": ""
+    }
+  }
 }
 ```
 
