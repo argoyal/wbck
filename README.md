@@ -1,6 +1,6 @@
 # Workspace Backup and Restoration Tool (wbck)
 
-![Workspace Backup and Restoration Tool](https://placeimg.com/640/360/tech)
+![Workspace Backup and Restoration Tool](https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSJwvW-RmC7SNL2jCyhiW7vJHTEE_3XXj6RDH8QASwliQ&s)
 
 ## Introduction
 
