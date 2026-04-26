@@ -5,12 +5,15 @@ from .sources import AwsSource, LocalSource
 from .repositories import clone_repositories
 
 
+_PKG_DIR = os.path.dirname(__file__)
+
+
 def setup_from_template(workspace_name, workspace_path, config_folder):
     """
     creates the workspace in specific path based on the template
     """
 
-    src_path = "structure"
+    src_path = os.path.join(_PKG_DIR, "structure")
     dst_path = os.path.join(workspace_path, workspace_name)
 
     if os.path.exists(dst_path):
@@ -20,9 +23,9 @@ def setup_from_template(workspace_name, workspace_path, config_folder):
         return
 
     print("Creating workspace {}".format(workspace_name))
-    shutil.copytree(src_path, dst_path)
+    shutil.copytree(src_path, dst_path, ignore=shutil.ignore_patterns('.keep'))
 
-    with open("config_template.json") as f:
+    with open(os.path.join(_PKG_DIR, "config_template.json")) as f:
         data = json.load(f)
     
     data["name"] = workspace_name

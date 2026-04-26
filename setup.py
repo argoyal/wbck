@@ -25,6 +25,10 @@ setup(
     long_description=long_description,
     url="https://github.com/argoyal/wbck.git",
     packages=find_packages(),
+    include_package_data=True,
+    package_data={
+        'wbck': ['config_template.json', 'structure/**/*', 'structure/**/.*', 'structure/*', 'structure/.*']
+    },
     install_requires=[
         'boto3'
     ],

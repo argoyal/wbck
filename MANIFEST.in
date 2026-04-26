@@ -1,0 +1,3 @@
+recursive-include wbck/structure *
+recursive-include wbck/structure .*
+include wbck/config_template.json
