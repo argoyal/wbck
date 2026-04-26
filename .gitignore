@@ -9,3 +9,5 @@ build/
 dist/
 wbck.egg-info
 .vscode
+VERSION
+CLAUDE.md

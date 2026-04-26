@@ -14,11 +14,10 @@ I classify workspace as all the data associated to a specific project/company I 
 
 - **Configuration Driven**: Utilize a configuration file to specify the repositories you want to backup and restore, allowing for easy customization.
 - **Exact Cloning**: Restore your repositories exactly where they were before, ensuring consistency across machines.
+- **Workspace Contexts**: Switch between multiple workspace configurations without specifying a config file path on every command — similar to `kubectl config use-context`.
 - **Simple Installation**: Install wbck from the PyPI repository using pip, making it accessible and easy to set up.
 
 ## Installation
-
-You can install wbck using pip:
 
 ```bash
 pip install wbck
@@ -26,27 +25,24 @@ pip install wbck
 
 ```bash
 wbck --help
-usage: wbck [-h] {create,backup,restore} ...
+usage: wbck [-h] {create,backup,restore,cache} ...
 
 Application to backup and restore my workspace data using config files
 
-optional arguments:
-  -h, --help            show this help message and exit
-
 Commands:
-  {create,backup,restore}
-    create              creates a new workspace
-    backup              commands pertaining to backup of your workspaces
-    restore             commands pertaining to restore of your workspaces
+  create              creates a new workspace
+  backup              backup your workspace
+  restore             restore your workspace
+  cache               manage workspace contexts
 ```
 
 ## Usage
 
 ### 1. Configuration Setup
 
-Create a configuration file (`wbck.yaml` by default) in your workspace directory. Here's an example configuration:
+Create a configuration file (`<workspace>_config.json`) in a configs directory. Here's an example configuration:
 
-```yaml
+```json
 {
   "name": "",
   "enabled": 1,
@@ -72,8 +68,6 @@ Create a configuration file (`wbck.yaml` by default) in your workspace directory
 }
 ```
 
-furthermore details about each of these parameters are explained below
-
 | Parameter | Description | Value/s |
 |----------|----------|----------|
 | name   | Name of workspace you are dealing with   | str (eg. microsoft, google etc.)  |
@@ -90,38 +84,81 @@ furthermore details about each of these parameters are explained below
 | source_settings.s3.aws_secret   | AWS Secret   | str  |
 | source_settings.local.local_path   | Local path where the data backup needs to happen   | str  |
 
+### 2. Workspace Contexts
 
-### 2. Backup Workspace
+wbck supports switching between multiple workspace configurations without specifying `--config-path` on every command. Point wbck at a folder containing all your config files once, then switch between them by name.
 
-Run the following command to backup your workspace:
-
-```bash
-wbck backup --config-path $HOME/.configs/workspace_config.json
-```
-
-### 3. Restore Workspace
-
-To restore your workspace on a new machine, ensure wbck is installed and the configuration file is in place. Then, execute:
+#### Set the config folder
 
 ```bash
-wbck restore --config-path $HOME/.configs/workspace_config.json
+wbck cache set --config-folder $HOME/.configs/
+# Config folder set to: /home/user/.configs/
+# Available configs: asterhq, microsoft
+# Switch with: wbck cache use <name>
 ```
+
+#### List available workspaces
 
 ```bash
-wbck restore --help
-usage: wbck restore [-h] --config-path CONFIG_PATH
-
-optional arguments:
-  -h, --help            show this help message and exit
-  --config-path CONFIG_PATH
-                        path where the config for this workspace is
+wbck cache show
+# Config folder: /home/user/.configs/
+#
+#   * asterhq
+#     microsoft
 ```
 
-This will clone all repositories specified in the configuration file to their original locations, restoring your workspace to its previous state.
+The `*` marks the currently active workspace.
 
-### 4. Create Workspace
+#### Switch the active workspace
 
-I have provided an option to create a workspace from a template structure that I generally maintain for all my workspaces.
+```bash
+wbck cache use microsoft
+# Switched to: microsoft
+
+wbck cache show
+# Config folder: /home/user/.configs/
+#
+#     asterhq
+#   * microsoft
+```
+
+#### Clear the context cache
+
+```bash
+wbck cache clear
+```
+
+#### Override per command
+
+You can always pass `--config-path` explicitly to bypass the active context for a single run:
+
+```bash
+wbck backup --config-path /path/to/specific_config.json
+```
+
+### 3. Backup Workspace
+
+```bash
+# Using the active context
+wbck backup
+
+# Or with an explicit config path
+wbck backup --config-path $HOME/.configs/asterhq_config.json
+```
+
+### 4. Restore Workspace
+
+```bash
+# Using the active context
+wbck restore
+
+# Or with an explicit config path
+wbck restore --config-path $HOME/.configs/asterhq_config.json
+```
+
+### 5. Create Workspace
+
+Create a new workspace from the default folder template:
 
 ```bash
 wbck create --name workspace --workspace-path $HOME/ --config-folder $HOME/.configs/
@@ -140,9 +177,7 @@ optional arguments:
                         path where the config for this workspace is
 ```
 
-This will clone all repositories specified in the configuration file to their original locations, restoring your workspace to its previous state.
-
-
+This creates the workspace directory at `<workspace-path>/<name>` and writes a starter config file to `<config-folder>/<name>_config.json`.
 
 ## Contributing
 
