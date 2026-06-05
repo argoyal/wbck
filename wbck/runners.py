@@ -8,6 +8,33 @@ from .utils import open_log, write_log, print_summary, print_dry_run_summary, pr
 _PKG_DIR = os.path.dirname(__file__)
 
 
+def _resolve_archive_source(config_data):
+    """Resolves which non-git source to use for workspace archival.
+    Uses default_source if set, else auto-selects if only one, else prompts."""
+    default = config_data.get("default_source", "")
+    enabled_sources = [
+        src for src in config_data.get("source_credentials", {})
+        if src != "git"
+    ]
+    if not enabled_sources:
+        raise SystemExit("No archive sources configured in source_credentials.")
+    if default and default in enabled_sources:
+        return default
+    if len(enabled_sources) == 1:
+        return enabled_sources[0]
+    print("Choose an archive source:")
+    for i, src in enumerate(enabled_sources, 1):
+        print("  {}) {}".format(i, src))
+    raw = input("Select [1-{}]: ".format(len(enabled_sources))).strip()
+    try:
+        idx = int(raw) - 1
+        if idx < 0 or idx >= len(enabled_sources):
+            raise ValueError()
+        return enabled_sources[idx]
+    except ValueError:
+        raise SystemExit("Invalid selection.")
+
+
 def _get_handler(source, config_data):
     if source == "s3":
         return AwsSource(config_data)
@@ -59,27 +86,7 @@ def backup_data(config_path, dry_run=False):
     is_enabled = bool(config_data["enabled"])
 
     if not is_enabled and not dry_run:
-        enabled_sources = [
-            src
-            for src in config_data.get("source_credentials", {})
-            if src != "git"
-        ]
-        if not enabled_sources:
-            raise SystemExit("No archive sources configured in source_credentials.")
-        if len(enabled_sources) == 1:
-            choice = enabled_sources[0]
-        else:
-            print("Workspace is disabled — choose an archive destination:")
-            for i, src in enumerate(enabled_sources, 1):
-                print("  {}) {}".format(i, src))
-            raw = input("Select [1-{}]: ".format(len(enabled_sources))).strip()
-            try:
-                idx = int(raw) - 1
-                if idx < 0 or idx >= len(enabled_sources):
-                    raise ValueError()
-                choice = enabled_sources[idx]
-            except ValueError:
-                raise SystemExit("Invalid selection.")
+        choice = _resolve_archive_source(config_data)
         handler = _get_handler(choice, config_data)
         print("Archiving full workspace using {}".format(choice))
         handler.archive_data()
@@ -195,27 +202,7 @@ def restore_data(config_path, force=False, keep_remote=False):
         return
 
     if not is_enabled and force:
-        enabled_sources = [
-            src
-            for src in config_data.get("source_credentials", {})
-            if src != "git"
-        ]
-        if not enabled_sources:
-            raise SystemExit("No archive sources configured in source_credentials.")
-        if len(enabled_sources) == 1:
-            choice = enabled_sources[0]
-        else:
-            print("Choose a source to restore the archive from:")
-            for i, src in enumerate(enabled_sources, 1):
-                print("  {}) {}".format(i, src))
-            raw = input("Select [1-{}]: ".format(len(enabled_sources))).strip()
-            try:
-                idx = int(raw) - 1
-                if idx < 0 or idx >= len(enabled_sources):
-                    raise ValueError()
-                choice = enabled_sources[idx]
-            except ValueError:
-                raise SystemExit("Invalid selection.")
+        choice = _resolve_archive_source(config_data)
         handler = _get_handler(choice, config_data)
         print("Force-restoring archive for workspace '{}' using {}".format(
             config_data["name"], choice))

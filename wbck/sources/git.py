@@ -210,7 +210,7 @@ class GitSource(BaseSource):
 
     @staticmethod
     def _update_config_with_fallback(config_path, path_entry, fallback_source):
-        """Adds fallback_source to the path_entry's backup_source list in the config file."""
+        """Replaces git with fallback_source in the path_entry's backup_source list."""
         import json
         with open(config_path, 'r') as f:
             config = json.load(f)
@@ -218,9 +218,11 @@ class GitSource(BaseSource):
         for entry in config.get("paths_to_include", []):
             if entry["folder_name"] == path_entry["folder_name"]:
                 sources = entry.get("backup_source", [])
-                if fallback_source not in sources:
+                if "git" in sources:
+                    sources[sources.index("git")] = fallback_source
+                elif fallback_source not in sources:
                     sources.append(fallback_source)
-                    entry["backup_source"] = sources
+                entry["backup_source"] = sources
                 break
 
         with open(config_path, 'w') as f:
