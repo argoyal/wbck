@@ -220,9 +220,17 @@ def restore_data(config_path, force=False, keep_remote=False, folder_name=None):
         if not paths_to_include:
             raise SystemExit("error: folder '{}' not found in paths_to_include".format(folder_name))
 
+    workspace_path = config_data["workspace_path"] or os.getenv("HOME")
+
     for path_entry in paths_to_include:
         if not bool(path_entry.get("enabled", 1)):
             print("Skipping disabled path: {}".format(path_entry["folder_name"]))
+            continue
+
+        resolved = os.path.join(workspace_path, config_data["name"], path_entry["folder_path"])
+        if os.path.exists(resolved) and os.listdir(resolved):
+            print("Skipping '{}' — already restored at {}".format(
+                path_entry["folder_name"], resolved))
             continue
 
         for source in path_entry.get("backup_source", []):
