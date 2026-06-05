@@ -34,11 +34,28 @@ class AwsSource(BaseSource):
         )
 
     def _s3_key_for_path(self, path_entry):
-        """Returns the S3 key to use: backup_location override or generated default."""
+        """Returns the S3 key to use for backup (today's date)."""
         if path_entry.get("backup_location"):
             return path_entry["backup_location"]
         date = datetime.now().date().isoformat()
         return "{}/{}-{}.zip".format(self.workspace_name, path_entry["folder_name"], date)
+
+    def _latest_s3_key_for_path(self, path_entry):
+        """Finds the latest backup S3 key for a path entry by listing objects."""
+        if path_entry.get("backup_location"):
+            return path_entry["backup_location"]
+        prefix = "{}/{}-".format(self.workspace_name, path_entry["folder_name"])
+        s3 = self._get_s3_client()
+        resp = s3.list_objects_v2(Bucket=self.BUCKET_NAME, Prefix=prefix)
+        objects = resp.get("Contents", [])
+        zips = sorted(
+            [obj["Key"] for obj in objects if obj["Key"].endswith(".zip")]
+        )
+        if not zips:
+            raise FileNotFoundError(
+                "No backup found for '{}' in s3://{}/{}".format(
+                    path_entry["folder_name"], self.BUCKET_NAME, prefix))
+        return zips[-1]
 
     # ------------------------------------------------------------------ #
     # Path-level methods
@@ -62,10 +79,9 @@ class AwsSource(BaseSource):
         return "success", ""
 
     def restore_path(self, path_entry, keep_remote=False):
-        """Downloads zip from S3, extracts it, then deletes the S3 object unless keep_remote."""
-        key = self._s3_key_for_path(path_entry)
-        date = datetime.now().date().isoformat()
-        zip_name = "{}-{}.zip".format(path_entry["folder_name"], date)
+        """Downloads the latest backup zip from S3, extracts it, then deletes it unless keep_remote."""
+        key = self._latest_s3_key_for_path(path_entry)
+        zip_name = os.path.basename(key)
 
         print("======================> Downloading s3://{}/{} to {}".format(
             self.BUCKET_NAME, key, zip_name))

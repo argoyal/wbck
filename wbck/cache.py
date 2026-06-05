@@ -92,6 +92,18 @@ def get_config_path_by_name(name):
     return os.path.join(folder, match)
 
 
+def get_all_config_paths():
+    """Returns a list of all config file paths in the config folder."""
+    data = _read()
+    folder = data.get("config_folder")
+    if not folder:
+        raise SystemExit("error: no config folder set. Run: wbck cache set --config-folder <path>")
+    configs = _scan_configs(folder)
+    if not configs:
+        raise SystemExit("error: no config files found in: {}".format(folder))
+    return [os.path.join(folder, c) for c in configs]
+
+
 def show_configs():
     data = _read()
     folder = data.get("config_folder")

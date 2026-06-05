@@ -2,7 +2,7 @@ import os
 import json
 import shutil
 from .sources import AwsSource, LocalSource, GitSource
-from .utils import open_log, write_log, print_summary, print_dry_run_summary
+from .utils import open_log, write_log, print_summary, print_dry_run_summary, print_unreachable_remotes, print_unpushable_remotes
 
 
 _PKG_DIR = os.path.dirname(__file__)
@@ -104,6 +104,8 @@ def backup_data(config_path, dry_run=False):
     if dry_run:
         print("DRY RUN — checking paths for '{}'".format(workspace_name))
         dry_results = []
+        unreachable = []
+        unpushable = []
 
         for path_entry in config_data.get("paths_to_include", []):
             folder_path = path_entry.get("folder_path", "")
@@ -120,7 +122,30 @@ def backup_data(config_path, dry_run=False):
                     issues = [(".", str(e))]
                 dry_results.append((path_entry["folder_name"], source, issues, folder_path))
 
+                if source == "git":
+                    fallback = handler._resolve_fallback_source()
+                    try:
+                        remote_url, reach_err, push_err = handler.check_remote(path_entry)
+                        if reach_err:
+                            unreachable.append((path_entry["folder_name"], remote_url, reach_err, folder_path))
+                        elif push_err:
+                            unpushable.append((
+                                path_entry["folder_name"], remote_url,
+                                fallback or "none", folder_path
+                            ))
+                    except Exception as e:
+                        unreachable.append((
+                            path_entry["folder_name"],
+                            path_entry.get("backup_location", "unknown"),
+                            str(e),
+                            folder_path
+                        ))
+
         print_dry_run_summary(dry_results, workspace_name)
+        if unreachable:
+            print_unreachable_remotes(unreachable)
+        if unpushable:
+            print_unpushable_remotes(unpushable)
         return
 
     log_fh, log_path = open_log(workspace_name)
@@ -136,7 +161,11 @@ def backup_data(config_path, dry_run=False):
             for source in path_entry.get("backup_source", []):
                 handler = _get_handler(source, config_data)
                 try:
-                    status, note = handler.backup_path(path_entry, paths_to_exclude)
+                    if source == "git":
+                        status, note = handler.backup_path(
+                            path_entry, paths_to_exclude, config_path=config_path)
+                    else:
+                        status, note = handler.backup_path(path_entry, paths_to_exclude)
                 except Exception as e:
                     status, note = "failed", str(e)
                 write_log(log_fh, path_entry["folder_name"], source, status.upper(), note)

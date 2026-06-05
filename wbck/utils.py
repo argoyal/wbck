@@ -73,35 +73,79 @@ def print_summary(results, workspace_name, log_path):
 def print_dry_run_summary(results, workspace_name):
     """
     Prints the dry-run summary table.
+    OK paths are listed first, then paths with issues below.
     results: list of (folder_name, source, issues, folder_path)
              where issues is list of (file, issue).
     """
+    ok = []
+    problems = []
+    for entry in results:
+        folder_name, source, issues, folder_path = entry
+        if not issues:
+            ok.append(entry)
+        else:
+            problems.append(entry)
+
     print(f"\nDRY-RUN SUMMARY — {workspace_name}")
     print("═" * 80)
 
-    total_paths = len(results)
-    paths_with_issues = 0
-    total_issues = 0
-
-    for folder_name, source, issues, folder_path in results:
-        label = f"{folder_name} [{source}]"
-        if folder_path:
-            label += f"  ({folder_path})"
-        if not issues:
+    if ok:
+        for folder_name, source, _, folder_path in ok:
+            label = f"{folder_name} [{source}]"
+            if folder_path:
+                label += f"  ({folder_path})"
             print(f" {label}  OK")
-            continue
-        paths_with_issues += 1
-        total_issues += len(issues)
-        print(f"\n {label}")
-        print(f" {'File':<50} Issue")
-        print(" " + "─" * 78)
-        for fpath, issue in issues:
-            print(f" {fpath:<50} {issue}")
+
+    if problems:
+        if ok:
+            print()
+        total_issues = 0
+        for folder_name, source, issues, folder_path in problems:
+            total_issues += len(issues)
+            label = f"{folder_name} [{source}]"
+            if folder_path:
+                label += f"  ({folder_path})"
+            print(f"\n {label}")
+            print(f" {'File':<50} Issue")
+            print(" " + "─" * 78)
+            for fpath, issue in issues:
+                print(f" {fpath:<50} {issue}")
 
     print("═" * 80)
-    parts = [f"{total_paths} paths checked"]
-    if paths_with_issues:
-        parts.append(f"{paths_with_issues} with issues ({total_issues} files)")
+    parts = [f"{len(results)} paths checked"]
+    if problems:
+        total_issues = sum(len(issues) for _, _, issues, _ in problems)
+        parts.append(f"{len(problems)} with issues ({total_issues} files)")
     else:
         parts.append("no issues found")
     print(" · ".join(parts))
+
+
+def print_unreachable_remotes(entries):
+    """
+    Prints a separate table of git repos whose remotes are unreachable.
+    entries: list of (folder_name, remote_url, error, folder_path).
+    """
+    print(f"\nUNREACHABLE GIT REMOTES — consider switching to s3/local backup")
+    print("═" * 100)
+    print(f" {'Folder':<20} {'Path':<25} {'Remote':<35} Error")
+    print("─" * 100)
+    for folder_name, remote_url, error, folder_path in entries:
+        print(f" {folder_name:<20} {folder_path:<25} {remote_url:<35} {error}")
+    print("─" * 100)
+    print(f" {len(entries)} remote(s) unreachable")
+
+
+def print_unpushable_remotes(entries):
+    """
+    Prints a separate table of git repos where push access is denied.
+    entries: list of (folder_name, remote_url, fallback_source, folder_path).
+    """
+    print(f"\nNO PUSH ACCESS — backup will fall back to zip")
+    print("═" * 100)
+    print(f" {'Folder':<20} {'Path':<25} {'Remote':<35} Fallback")
+    print("─" * 100)
+    for folder_name, remote_url, fallback, folder_path in entries:
+        print(f" {folder_name:<20} {folder_path:<25} {remote_url:<35} {fallback}")
+    print("─" * 100)
+    print(f" {len(entries)} repo(s) without push access")

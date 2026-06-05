@@ -36,9 +36,9 @@ def test_backup_path_dirty_code_files_dumped(new_config, tmp_path):
         status, note = source.backup_path(_GIT_PATH_ENTRY, [])
 
     assert status == "success"
-    assert "local-dump-" in note
+    assert "pushed to local-dump-" in note
 
-    # Verify git commands: reset → add → commit → branch → reset HEAD~1
+    # Verify git commands: reset → add → commit → branch → reset HEAD~1 → push
     cmds = [call[0][0] for call in mock_run.call_args_list]
     assert cmds[0] == ["git", "-C", str(notes_dir), "status", "--porcelain"]
     assert cmds[1][:3] == ["git", "-C", str(notes_dir)] and cmds[1][3] == "reset"
@@ -46,6 +46,7 @@ def test_backup_path_dirty_code_files_dumped(new_config, tmp_path):
     assert "commit" in cmds[3]
     assert "branch" in cmds[4]
     assert cmds[5] == ["git", "-C", str(notes_dir), "reset", "HEAD~1"]
+    assert "push" in cmds[6]
 
 
 def test_backup_path_dirty_binary_files_prompt(new_config, tmp_path):

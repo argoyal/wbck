@@ -2,6 +2,7 @@
 	"name": "",
 	"enabled": 1,
 	"workspace_path": "",
+	"default_source": "",
 	"paths_to_include": [
 		{
 			"folder_name": "workspace-backup",

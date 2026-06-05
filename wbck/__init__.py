@@ -2,7 +2,7 @@ import os
 import argparse
 from importlib.metadata import version as _pkg_version
 from .runners import backup_data, restore_data, setup_from_template
-from .cache import get_active_config_path, get_config_path_by_name, has_config_folder, set_config_folder, use_config, show_configs, clear_cache
+from .cache import get_active_config_path, get_all_config_paths, get_config_path_by_name, has_config_folder, set_config_folder, use_config, show_configs, clear_cache
 
 
 def _resolve_config_path(args):
@@ -25,11 +25,19 @@ def _resolve_config_path(args):
 
 
 def restore_workspace(args):
+    if args.all:
+        for config_path in get_all_config_paths():
+            restore_data(config_path, force=args.force, keep_remote=args.keep_remote_data)
+        return
     config_path = _resolve_config_path(args)
     restore_data(config_path, force=args.force, keep_remote=args.keep_remote_data)
 
 
 def backup_workspace(args):
+    if args.all:
+        for config_path in get_all_config_paths():
+            backup_data(config_path, dry_run=args.dry_run)
+        return
     config_path = _resolve_config_path(args)
     backup_data(config_path, dry_run=args.dry_run)
 
@@ -97,6 +105,12 @@ def cli():
         default=False,
         help="validate all paths without performing the actual backup"
     )
+    backup_parser.add_argument(
+        "--all",
+        action="store_true",
+        default=False,
+        help="run backup for all workspaces in the config folder"
+    )
     backup_parser.set_defaults(func=backup_workspace)
 
     # restore
@@ -123,6 +137,12 @@ def cli():
         action="store_true",
         default=False,
         help="do not delete the backup from the remote source after restoring"
+    )
+    restore_parser.add_argument(
+        "--all",
+        action="store_true",
+        default=False,
+        help="run restore for all workspaces in the config folder"
     )
     restore_parser.set_defaults(func=restore_workspace)
 

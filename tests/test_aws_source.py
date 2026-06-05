@@ -97,9 +97,14 @@ def test_restore_path_downloads_and_deletes(new_config, tmp_path, monkeypatch):
         import shutil
         shutil.copy(str(zip_source), local)
 
+    s3_key = "test-workspace/{}".format(zip_name)
+
     with patch.object(source, "_get_s3_client") as mock_client:
         mock_s3 = MagicMock()
         mock_s3.download_file.side_effect = fake_download
+        mock_s3.list_objects_v2.return_value = {
+            "Contents": [{"Key": s3_key}]
+        }
         mock_client.return_value = mock_s3
 
         work_dir = tmp_path / "work"

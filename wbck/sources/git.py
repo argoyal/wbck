@@ -6,6 +6,14 @@ from datetime import datetime
 
 from .base import BaseSource
 
+# Environment for non-interactive git commands that touch remotes.
+# Prevents credential prompts on both HTTPS and SSH.
+_GIT_REMOTE_ENV = {
+    **os.environ,
+    "GIT_TERMINAL_PROMPT": "0",
+    "GIT_SSH_COMMAND": "ssh -o BatchMode=yes",
+}
+
 
 def _prompt_with_timeout(seconds):
     """
@@ -87,10 +95,11 @@ class GitSource(BaseSource):
 
     def _dump_code_to_branch(self, resolved, code_files):
         """
-        Creates a local-dump-<timestamp> branch containing only the given code files.
+        Creates a local-dump-<timestamp> branch containing only the given code files,
+        then pushes it to origin. If push fails (no permissions), falls back to
+        zipping the changed files to S3/local.
 
-        Strategy: unstage all → stage code files → commit → create branch →
-        reset HEAD~1 (worktree stays dirty, current branch untouched).
+        Returns (dump_branch, pushed) where pushed indicates if remote push succeeded.
         """
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         dump_branch = "local-dump-{}".format(timestamp)
@@ -119,12 +128,109 @@ class GitSource(BaseSource):
             subprocess.run(["git", "-C", resolved, "reset", "HEAD~1"],
                            capture_output=True, text=True)
 
-        return dump_branch
+        # Try to push the dump branch to origin (non-interactive)
+        push_result = subprocess.run(
+            ["git", "-C", resolved, "push", "origin", dump_branch],
+            capture_output=True, text=True, env=_GIT_REMOTE_ENV
+        )
+        pushed = push_result.returncode == 0
 
-    def backup_path(self, path_entry, paths_to_exclude):
+        return dump_branch, pushed
+
+    @staticmethod
+    def _dump_note(dump_branch, pushed, fallback_dest):
+        if not dump_branch:
+            return ""
+        if pushed:
+            return "pushed to {}".format(dump_branch)
+        if fallback_dest:
+            return "zip backed up to {}".format(fallback_dest)
+        return "local branch only: {}".format(dump_branch)
+
+    def _resolve_fallback_source(self):
+        """Returns the fallback source name: default_source if set, else first non-git source."""
+        default = self.config_data.get("default_source", "")
+        if default and default != "git" and default in self.source_credentials:
+            return default
+        non_git = [src for src in self.source_credentials if src != "git"]
+        return non_git[0] if non_git else None
+
+    def _fallback_zip_to_backup(self, path_entry, code_files, dump_branch, config_path=None):
+        """
+        When git push fails, zip the changed code files and back them up
+        via the fallback source. Updates the config to add the fallback source
+        to the path_entry's backup_source list.
+        """
+        from .aws import AwsSource
+        from .local import LocalSource
+
+        fallback_source = self._resolve_fallback_source()
+        if not fallback_source:
+            return None
+
+        resolved = self._resolve_path(path_entry)
+        date = datetime.now().date().isoformat()
+        zip_name = "{}-{}-{}.zip".format(path_entry["folder_name"], dump_branch, date)
+
+        import zipfile
+        zipf = zipfile.ZipFile(zip_name, 'w', zipfile.ZIP_DEFLATED)
+        try:
+            for f in code_files:
+                fpath = os.path.join(resolved, f)
+                if os.path.exists(fpath):
+                    zipf.write(fpath, f)
+        finally:
+            zipf.close()
+
+        try:
+            if fallback_source == "s3":
+                handler = AwsSource(self.config_data)
+                s3 = handler._get_s3_client()
+                key = "{}/{}/{}".format(
+                    self.workspace_name, path_entry["folder_name"], zip_name)
+                s3.upload_file(zip_name, handler.BUCKET_NAME, key)
+                dest = "s3://{}/{}".format(handler.BUCKET_NAME, key)
+            else:
+                handler = LocalSource(self.config_data)
+                dest_dir = os.path.join(
+                    handler.local_path, self.workspace_name, path_entry["folder_name"])
+                os.makedirs(dest_dir, exist_ok=True)
+                import shutil
+                dest = os.path.join(dest_dir, zip_name)
+                shutil.copy(zip_name, dest)
+        finally:
+            if os.path.exists(zip_name):
+                os.remove(zip_name)
+
+        # Update config: add fallback source to this path's backup_source
+        if config_path:
+            self._update_config_with_fallback(config_path, path_entry, fallback_source)
+
+        return "{} ({})".format(fallback_source, dest)
+
+    @staticmethod
+    def _update_config_with_fallback(config_path, path_entry, fallback_source):
+        """Adds fallback_source to the path_entry's backup_source list in the config file."""
+        import json
+        with open(config_path, 'r') as f:
+            config = json.load(f)
+
+        for entry in config.get("paths_to_include", []):
+            if entry["folder_name"] == path_entry["folder_name"]:
+                sources = entry.get("backup_source", [])
+                if fallback_source not in sources:
+                    sources.append(fallback_source)
+                    entry["backup_source"] = sources
+                break
+
+        with open(config_path, 'w') as f:
+            json.dump(config, f, indent='\t')
+
+    def backup_path(self, path_entry, paths_to_exclude, config_path=None):
         """
         Checks if the repo is clean. If dirty:
-        - Code (text) files are auto-committed to a local-dump-<ts> branch.
+        - Code (text) files are auto-committed to a local-dump-<ts> branch and pushed.
+        - If push fails, falls back to zip backup via default_source.
         - Non-code (binary) files are flagged for the user to handle.
         Returns ('success'|'skipped', note).
         """
@@ -141,13 +247,34 @@ class GitSource(BaseSource):
             resolved, result.stdout, paths_to_exclude)
 
         dump_branch = None
+        pushed = False
+        fallback_dest = None
         if code_files:
             try:
-                dump_branch = self._dump_code_to_branch(resolved, code_files)
-                print(
-                    "\n[{}] dumped {} code file(s) to branch '{}'".format(
-                        path_entry['folder_name'], len(code_files), dump_branch)
-                )
+                dump_branch, pushed = self._dump_code_to_branch(resolved, code_files)
+                if pushed:
+                    print(
+                        "\n[{}] pushed {} code file(s) to branch '{}'".format(
+                            path_entry['folder_name'], len(code_files), dump_branch)
+                    )
+                else:
+                    print(
+                        "\n[{}] created local branch '{}' but push failed — "
+                        "falling back to zip backup".format(
+                            path_entry['folder_name'], dump_branch)
+                    )
+                    fallback_dest = self._fallback_zip_to_backup(
+                        path_entry, code_files, dump_branch, config_path)
+                    if fallback_dest:
+                        print(
+                            "[{}] code backed up to {}".format(
+                                path_entry['folder_name'], fallback_dest)
+                        )
+                    else:
+                        print(
+                            "[{}] no fallback source configured — "
+                            "code only in local branch".format(path_entry['folder_name'])
+                        )
             except subprocess.CalledProcessError as e:
                 print(
                     "\n[{}] failed to create dump branch: {}".format(
@@ -156,7 +283,11 @@ class GitSource(BaseSource):
 
         if not non_code_files:
             if dump_branch:
-                return "success", "code dumped to {}".format(dump_branch)
+                if pushed:
+                    return "success", "pushed to {}".format(dump_branch)
+                if fallback_dest:
+                    return "success", "zip backed up to {}".format(fallback_dest)
+                return "success", "local branch only: {}".format(dump_branch)
             return "skipped", "uncommitted changes"
 
         # Non-code files need user attention
@@ -180,20 +311,62 @@ class GitSource(BaseSource):
                     capture_output=True, text=True
                 )
                 if not result.stdout.strip():
-                    note = "code dumped to {}".format(dump_branch) if dump_branch else ""
-                    return "success", note
+                    return "success", self._dump_note(dump_branch, pushed, fallback_dest)
                 _, non_code_files = self._parse_dirty_files(
                     resolved, result.stdout, paths_to_exclude)
                 if not non_code_files:
-                    note = "code dumped to {}".format(dump_branch) if dump_branch else ""
-                    return "success", note
+                    return "success", self._dump_note(dump_branch, pushed, fallback_dest)
                 continue
 
             # Continue / timeout — skip with note
+            code_note = self._dump_note(dump_branch, pushed, fallback_dest)
             note = "{} non-code file(s) uncommitted".format(len(non_code_files))
-            if dump_branch:
-                note = "code dumped to {}; {}".format(dump_branch, note)
+            if code_note:
+                note = "{}; {}".format(code_note, note)
             return "skipped", note
+
+    def check_remote(self, path_entry):
+        """
+        Checks whether the git remote is reachable and pushable.
+        Returns (remote_url, reachable_error, push_error).
+        reachable_error/push_error are None if the check passed.
+        """
+        resolved = self._resolve_path(path_entry)
+
+        if not os.path.exists(resolved):
+            return (path_entry.get("backup_location", "unknown"),
+                    "path does not exist", None)
+
+        # Get the remote URL
+        result = subprocess.run(
+            ["git", "-C", resolved, "remote", "get-url", "origin"],
+            capture_output=True, text=True
+        )
+        if result.returncode != 0:
+            return ("no remote configured",
+                    "git remote get-url origin failed", None)
+
+        remote_url = result.stdout.strip()
+
+        # ls-remote with a short timeout to check reachability (non-interactive)
+        result = subprocess.run(
+            ["git", "-C", resolved, "ls-remote", "--exit-code", "--heads", remote_url],
+            capture_output=True, text=True, timeout=15, env=_GIT_REMOTE_ENV
+        )
+        if result.returncode != 0:
+            error = result.stderr.strip() if result.stderr.strip() else "exit code {}".format(result.returncode)
+            return (remote_url, error, None)
+
+        # Check push access with a no-op dry-run push (non-interactive)
+        result = subprocess.run(
+            ["git", "-C", resolved, "push", "--dry-run", "origin", "HEAD:refs/heads/__wbck_push_test__"],
+            capture_output=True, text=True, timeout=15, env=_GIT_REMOTE_ENV
+        )
+        if result.returncode != 0:
+            push_error = result.stderr.strip() if result.stderr.strip() else "no push access"
+            return (remote_url, None, push_error)
+
+        return (remote_url, None, None)
 
     def dry_run_path(self, path_entry, paths_to_exclude):
         """

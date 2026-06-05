@@ -1,3 +1,4 @@
+import glob
 import os
 import shutil
 import zipfile
@@ -14,12 +15,25 @@ class LocalSource(BaseSource):
         self.local_path = local_creds.get("root_path", "")
 
     def _dest_path_for_entry(self, path_entry):
-        """Returns the full destination file path for a path entry."""
+        """Returns the full destination file path for backup (today's date)."""
         if path_entry.get("backup_location"):
             return path_entry["backup_location"]
         date = datetime.now().date().isoformat()
         zip_name = "{}-{}.zip".format(path_entry["folder_name"], date)
         return os.path.join(self.local_path, self.workspace_name, zip_name)
+
+    def _latest_backup_for_entry(self, path_entry):
+        """Finds the latest backup zip for a path entry by date in filename."""
+        if path_entry.get("backup_location"):
+            return path_entry["backup_location"]
+        backup_dir = os.path.join(self.local_path, self.workspace_name)
+        pattern = os.path.join(backup_dir, "{}-*.zip".format(path_entry["folder_name"]))
+        matches = sorted(glob.glob(pattern))
+        if not matches:
+            raise FileNotFoundError(
+                "No backup found for '{}' in {}".format(
+                    path_entry["folder_name"], backup_dir))
+        return matches[-1]
 
     # ------------------------------------------------------------------ #
     # Path-level methods
@@ -46,11 +60,9 @@ class LocalSource(BaseSource):
         return "success", ""
 
     def restore_path(self, path_entry, keep_remote=False):
-        """Copies zip from local source, extracts it, then deletes the source zip unless keep_remote."""
-        source_zip = self._dest_path_for_entry(path_entry)
-
-        date = datetime.now().date().isoformat()
-        local_zip = "{}-{}.zip".format(path_entry["folder_name"], date)
+        """Copies the latest backup zip from local source, extracts it, then deletes it unless keep_remote."""
+        source_zip = self._latest_backup_for_entry(path_entry)
+        local_zip = os.path.basename(source_zip)
 
         print("======================> Copying {} to {}".format(source_zip, local_zip))
         shutil.copy(source_zip, local_zip)
