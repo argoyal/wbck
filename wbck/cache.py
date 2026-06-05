@@ -72,6 +72,26 @@ def get_active_config_path():
     return os.path.join(folder, active)
 
 
+def has_config_folder():
+    return bool(_read().get("config_folder"))
+
+
+def get_config_path_by_name(name):
+    data = _read()
+    folder = data.get("config_folder")
+    if not folder:
+        raise SystemExit("error: no config folder set. Run: wbck cache set --config-folder <path>")
+    configs = _scan_configs(folder)
+    match = next(
+        (c for c in configs if c == name or _display_name(c) == name),
+        None
+    )
+    if not match:
+        available = ", ".join(_display_name(c) for c in configs) or "none"
+        raise SystemExit("error: config '{}' not found. Available: {}".format(name, available))
+    return os.path.join(folder, match)
+
+
 def show_configs():
     data = _read()
     folder = data.get("config_folder")

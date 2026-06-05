@@ -1,19 +1,26 @@
 import os
 import argparse
 from .runners import backup_data, restore_data, setup_from_template
-from .cache import get_active_config_path, set_config_folder, use_config, show_configs, clear_cache
+from .cache import get_active_config_path, get_config_path_by_name, has_config_folder, set_config_folder, use_config, show_configs, clear_cache
 
 
 def _resolve_config_path(args):
-    path = getattr(args, "config_path", None)
-    if not path:
-        path = get_active_config_path()
-    if not path:
-        raise SystemExit(
-            "error: no active config. Set a folder with: wbck cache set --config-folder <path>\n"
-            "       then switch to a config with:        wbck cache use <name>"
-        )
-    return path
+    name = getattr(args, "name", None)
+    if name:
+        return get_config_path_by_name(name)
+
+    path = get_active_config_path()
+    if path:
+        return path
+
+    explicit_path = getattr(args, "config_path", None)
+    if explicit_path and not has_config_folder():
+        return explicit_path
+
+    raise SystemExit(
+        "error: no active config. Set a folder with: wbck cache set --config-folder <path>\n"
+        "       then switch to a config with:        wbck cache use <name>"
+    )
 
 
 def restore_workspace(args):
@@ -68,9 +75,15 @@ def cli():
     # backup
     backup_parser = subparsers.add_parser("backup", help="backup your workspace")
     backup_parser.add_argument(
+        "name",
+        nargs="?",
+        default=None,
+        help="workspace name to back up (resolved from cached config folder)"
+    )
+    backup_parser.add_argument(
         "--config-path",
         default=None,
-        help="explicit config file path (overrides active context)"
+        help="explicit config file path (used only when no cache folder is set)"
     )
     backup_parser.set_defaults(func=backup_workspace)
 
