@@ -14,7 +14,8 @@
 		"s3": {
 			"bucket_name": "",
 			"aws_key": "",
-			"aws_secret": ""
+			"aws_secret": "",
+			"aws_profile": ""
 		},
 		"local": {
 			"local_path": ""
