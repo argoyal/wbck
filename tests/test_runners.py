@@ -104,7 +104,86 @@ def test_restore_data_force_calls_restore_archive(tmp_path):
     mock_handler = MagicMock()
 
     with patch("wbck.runners.AwsSource", return_value=mock_handler), \
-         patch("wbck.runners.LocalSource", return_value=mock_handler):
+         patch("wbck.runners.LocalSource", return_value=mock_handler), \
+         patch("builtins.input", return_value="1"):
         restore_data(str(p), force=True)
 
-    assert mock_handler.restore_archive_data.called
+    assert mock_handler.restore_archive_data.call_count == 1
+
+
+def test_backup_disabled_workspace_prompts_user(tmp_path):
+    import json
+    config = {
+        "name": "ws",
+        "enabled": 0,
+        "workspace_path": str(tmp_path),
+        "paths_to_include": [],
+        "paths_to_exclude": [],
+        "source_credentials": {
+            "s3": {"root_path": "b", "aws_key": "k", "aws_secret": "s", "aws_profile": ""},
+            "local": {"root_path": "/tmp/backups"},
+            "git": {"auth_method": "ssh"}
+        }
+    }
+    p = tmp_path / "config.json"
+    p.write_text(json.dumps(config))
+
+    mock_handler = MagicMock()
+
+    with patch("wbck.runners.AwsSource", return_value=mock_handler), \
+         patch("wbck.runners.LocalSource", return_value=mock_handler), \
+         patch("builtins.input", return_value="2") as mock_input:
+        backup_data(str(p))
+
+    mock_input.assert_called_once()
+    assert mock_handler.archive_data.call_count == 1
+
+
+def test_backup_disabled_workspace_single_source_auto_selects(tmp_path):
+    import json
+    config = {
+        "name": "ws",
+        "enabled": 0,
+        "workspace_path": str(tmp_path),
+        "paths_to_include": [],
+        "paths_to_exclude": [],
+        "source_credentials": {
+            "s3": {"root_path": "b", "aws_key": "k", "aws_secret": "s", "aws_profile": ""},
+            "git": {"auth_method": "ssh"}
+        }
+    }
+    p = tmp_path / "config.json"
+    p.write_text(json.dumps(config))
+
+    mock_handler = MagicMock()
+
+    with patch("wbck.runners.AwsSource", return_value=mock_handler), \
+         patch("builtins.input") as mock_input:
+        backup_data(str(p))
+
+    mock_input.assert_not_called()
+    assert mock_handler.archive_data.call_count == 1
+
+
+def test_backup_disabled_workspace_invalid_selection_exits(tmp_path):
+    import json
+    config = {
+        "name": "ws",
+        "enabled": 0,
+        "workspace_path": str(tmp_path),
+        "paths_to_include": [],
+        "paths_to_exclude": [],
+        "source_credentials": {
+            "s3": {"root_path": "b", "aws_key": "k", "aws_secret": "s", "aws_profile": ""},
+            "local": {"root_path": "/tmp/backups"},
+            "git": {"auth_method": "ssh"}
+        }
+    }
+    p = tmp_path / "config.json"
+    p.write_text(json.dumps(config))
+
+    with patch("wbck.runners.AwsSource"), \
+         patch("wbck.runners.LocalSource"), \
+         patch("builtins.input", return_value="bad"):
+        with pytest.raises(SystemExit):
+            backup_data(str(p))

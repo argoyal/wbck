@@ -60,10 +60,25 @@ def backup_data(config_path):
             for src in config_data.get("source_credentials", {})
             if src != "git"
         ]
-        for src in enabled_sources:
-            handler = _get_handler(src, config_data)
-            print("Workspace is disabled — archiving full workspace using {}".format(src))
-            handler.archive_data()
+        if not enabled_sources:
+            raise SystemExit("No archive sources configured in source_credentials.")
+        if len(enabled_sources) == 1:
+            choice = enabled_sources[0]
+        else:
+            print("Workspace is disabled — choose an archive destination:")
+            for i, src in enumerate(enabled_sources, 1):
+                print("  {}) {}".format(i, src))
+            raw = input("Select [1-{}]: ".format(len(enabled_sources))).strip()
+            try:
+                idx = int(raw) - 1
+                if idx < 0 or idx >= len(enabled_sources):
+                    raise ValueError()
+                choice = enabled_sources[idx]
+            except ValueError:
+                raise SystemExit("Invalid selection.")
+        handler = _get_handler(choice, config_data)
+        print("Archiving full workspace using {}".format(choice))
+        handler.archive_data()
         return
 
     log_fh, log_path = open_log(workspace_name)
@@ -114,11 +129,26 @@ def restore_data(config_path, force=False):
             for src in config_data.get("source_credentials", {})
             if src != "git"
         ]
-        for src in enabled_sources:
-            handler = _get_handler(src, config_data)
-            print("Force-restoring archive for workspace '{}' using {}".format(
-                config_data["name"], src))
-            handler.restore_archive_data()
+        if not enabled_sources:
+            raise SystemExit("No archive sources configured in source_credentials.")
+        if len(enabled_sources) == 1:
+            choice = enabled_sources[0]
+        else:
+            print("Choose a source to restore the archive from:")
+            for i, src in enumerate(enabled_sources, 1):
+                print("  {}) {}".format(i, src))
+            raw = input("Select [1-{}]: ".format(len(enabled_sources))).strip()
+            try:
+                idx = int(raw) - 1
+                if idx < 0 or idx >= len(enabled_sources):
+                    raise ValueError()
+                choice = enabled_sources[idx]
+            except ValueError:
+                raise SystemExit("Invalid selection.")
+        handler = _get_handler(choice, config_data)
+        print("Force-restoring archive for workspace '{}' using {}".format(
+            config_data["name"], choice))
+        handler.restore_archive_data()
         return
 
     for path_entry in config_data.get("paths_to_include", []):
