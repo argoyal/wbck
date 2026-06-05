@@ -73,7 +73,8 @@ def print_summary(results, workspace_name, log_path):
 def print_dry_run_summary(results, workspace_name):
     """
     Prints the dry-run summary table.
-    results: list of (folder_name, source, issues) where issues is list of (file, issue).
+    results: list of (folder_name, source, issues, folder_path)
+             where issues is list of (file, issue).
     """
     print(f"\nDRY-RUN SUMMARY — {workspace_name}")
     print("═" * 80)
@@ -82,10 +83,12 @@ def print_dry_run_summary(results, workspace_name):
     paths_with_issues = 0
     total_issues = 0
 
-    for folder_name, source, issues in results:
+    for folder_name, source, issues, folder_path in results:
         label = f"{folder_name} [{source}]"
+        if folder_path:
+            label += f"  ({folder_path})"
         if not issues:
-            print(f" {label:<40} OK")
+            print(f" {label}  OK")
             continue
         paths_with_issues += 1
         total_issues += len(issues)

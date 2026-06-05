@@ -95,7 +95,7 @@ def backup_data(config_path, dry_run=False):
             issues = handler.dry_run_full_workspace()
         except Exception as e:
             issues = [(".", str(e))]
-        dry_results = [(workspace_name, "archive", issues)]
+        dry_results = [(workspace_name, "archive", issues, "")]
         print_dry_run_summary(dry_results, workspace_name)
         return
 
@@ -106,8 +106,9 @@ def backup_data(config_path, dry_run=False):
         dry_results = []
 
         for path_entry in config_data.get("paths_to_include", []):
+            folder_path = path_entry.get("folder_path", "")
             if not bool(path_entry.get("enabled", 1)):
-                dry_results.append((path_entry["folder_name"], "—", [(".", "disabled in config")]))
+                dry_results.append((path_entry["folder_name"], "—", [(".", "disabled in config")], folder_path))
                 continue
 
             for source in path_entry.get("backup_source", []):
@@ -117,7 +118,7 @@ def backup_data(config_path, dry_run=False):
                     issues = handler.dry_run_path(path_entry, paths_to_exclude)
                 except Exception as e:
                     issues = [(".", str(e))]
-                dry_results.append((path_entry["folder_name"], source, issues))
+                dry_results.append((path_entry["folder_name"], source, issues, folder_path))
 
         print_dry_run_summary(dry_results, workspace_name)
         return
