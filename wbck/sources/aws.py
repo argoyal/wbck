@@ -13,6 +13,7 @@ class AwsSource(BaseSource):
         self.AWS_PROFILE = s3_config.get("aws_profile", "")
 
         self.BUCKET_NAME = s3_config["bucket_name"]
+        self.s3_key = "{}/{}".format(self.workspace_name, self.zip_name)
 
     def _get_s3_client(self):
         if self.AWS_PROFILE:
@@ -38,7 +39,7 @@ class AwsSource(BaseSource):
             self.zip_name, self.BUCKET_NAME))
 
         s3 = self._get_s3_client()
-        s3.upload_file(self.zip_name, self.BUCKET_NAME, self.zip_name)
+        s3.upload_file(self.zip_name, self.BUCKET_NAME, self.s3_key)
 
         self.perform_cleanup()
 
@@ -52,7 +53,7 @@ class AwsSource(BaseSource):
             self.zip_name, self.BUCKET_NAME))
 
         s3 = self._get_s3_client()
-        s3.download_file(self.BUCKET_NAME, self.zip_name, self.zip_name)
+        s3.download_file(self.BUCKET_NAME, self.s3_key, self.zip_name)
 
         self.extract_from_compressed_data()
 
