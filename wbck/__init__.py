@@ -25,21 +25,25 @@ def _resolve_config_path(args):
 
 
 def restore_workspace(args):
+    folder = getattr(args, "folder_name", None)
     if args.all:
         for config_path in get_all_config_paths():
-            restore_data(config_path, force=args.force, keep_remote=args.keep_remote_data)
+            restore_data(config_path, force=args.force,
+                         keep_remote=args.keep_remote_data, folder_name=folder)
         return
     config_path = _resolve_config_path(args)
-    restore_data(config_path, force=args.force, keep_remote=args.keep_remote_data)
+    restore_data(config_path, force=args.force,
+                 keep_remote=args.keep_remote_data, folder_name=folder)
 
 
 def backup_workspace(args):
+    folder = getattr(args, "folder_name", None)
     if args.all:
         for config_path in get_all_config_paths():
-            backup_data(config_path, dry_run=args.dry_run)
+            backup_data(config_path, dry_run=args.dry_run, folder_name=folder)
         return
     config_path = _resolve_config_path(args)
-    backup_data(config_path, dry_run=args.dry_run)
+    backup_data(config_path, dry_run=args.dry_run, folder_name=folder)
 
 
 def create_new_workspace(args):
@@ -111,6 +115,11 @@ def cli():
         default=False,
         help="run backup for all workspaces in the config folder"
     )
+    backup_parser.add_argument(
+        "--folder-name",
+        default=None,
+        help="back up only this folder from paths_to_include"
+    )
     backup_parser.set_defaults(func=backup_workspace)
 
     # restore
@@ -143,6 +152,11 @@ def cli():
         action="store_true",
         default=False,
         help="run restore for all workspaces in the config folder"
+    )
+    restore_parser.add_argument(
+        "--folder-name",
+        default=None,
+        help="restore only this folder from paths_to_include"
     )
     restore_parser.set_defaults(func=restore_workspace)
 

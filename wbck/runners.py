@@ -69,7 +69,7 @@ def setup_from_template(workspace_name, workspace_path, config_folder):
         json.dump(data, f)
 
 
-def backup_data(config_path, dry_run=False):
+def backup_data(config_path, dry_run=False, folder_name=None):
     """
     Path-centric backup. If workspace enabled=0, performs full archival.
     Otherwise iterates paths_to_include and dispatches to per-source handlers.
@@ -107,6 +107,11 @@ def backup_data(config_path, dry_run=False):
         return
 
     paths_to_exclude = config_data.get("paths_to_exclude", [])
+    paths_to_include = config_data.get("paths_to_include", [])
+    if folder_name:
+        paths_to_include = [p for p in paths_to_include if p["folder_name"] == folder_name]
+        if not paths_to_include:
+            raise SystemExit("error: folder '{}' not found in paths_to_include".format(folder_name))
 
     if dry_run:
         print("DRY RUN — checking paths for '{}'".format(workspace_name))
@@ -114,7 +119,7 @@ def backup_data(config_path, dry_run=False):
         unreachable = []
         unpushable = []
 
-        for path_entry in config_data.get("paths_to_include", []):
+        for path_entry in paths_to_include:
             folder_path = path_entry.get("folder_path", "")
             if not bool(path_entry.get("enabled", 1)):
                 dry_results.append((path_entry["folder_name"], "—", [(".", "disabled in config")], folder_path))
@@ -159,7 +164,7 @@ def backup_data(config_path, dry_run=False):
     results = []
 
     try:
-        for path_entry in config_data.get("paths_to_include", []):
+        for path_entry in paths_to_include:
             if not bool(path_entry.get("enabled", 1)):
                 write_log(log_fh, path_entry["folder_name"], "—", "SKIPPED", "disabled in config")
                 results.append((path_entry["folder_name"], "—", "skipped", "disabled in config"))
@@ -183,7 +188,7 @@ def backup_data(config_path, dry_run=False):
     print_summary(results, workspace_name, log_path)
 
 
-def restore_data(config_path, force=False, keep_remote=False):
+def restore_data(config_path, force=False, keep_remote=False, folder_name=None):
     """
     Path-centric restore. Skips disabled workspaces unless --force.
     --force restores from the full workspace archive.
@@ -209,7 +214,13 @@ def restore_data(config_path, force=False, keep_remote=False):
         handler.restore_archive_data(keep_remote=keep_remote)
         return
 
-    for path_entry in config_data.get("paths_to_include", []):
+    paths_to_include = config_data.get("paths_to_include", [])
+    if folder_name:
+        paths_to_include = [p for p in paths_to_include if p["folder_name"] == folder_name]
+        if not paths_to_include:
+            raise SystemExit("error: folder '{}' not found in paths_to_include".format(folder_name))
+
+    for path_entry in paths_to_include:
         if not bool(path_entry.get("enabled", 1)):
             print("Skipping disabled path: {}".format(path_entry["folder_name"]))
             continue
