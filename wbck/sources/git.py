@@ -226,6 +226,121 @@ class GitSource(BaseSource):
         with open(config_path, 'w') as f:
             json.dump(config, f, indent='\t')
 
+    def _push_unpushed_commits(self, resolved, path_entry, config_path):
+        """
+        Checks for commits ahead of the remote tracking branch and pushes them.
+        Returns a note string (empty if nothing to push or push succeeded).
+        """
+        # Check if there's an upstream configured
+        upstream = subprocess.run(
+            ["git", "-C", resolved, "rev-parse", "--abbrev-ref", "@{u}"],
+            capture_output=True, text=True
+        )
+        if upstream.returncode != 0:
+            # No upstream — try to push the current branch
+            branch = subprocess.run(
+                ["git", "-C", resolved, "rev-parse", "--abbrev-ref", "HEAD"],
+                capture_output=True, text=True
+            )
+            branch_name = branch.stdout.strip()
+            if not branch_name or branch_name == "HEAD":
+                return ""
+            push_result = subprocess.run(
+                ["git", "-C", resolved, "push", "-u", "origin", branch_name],
+                capture_output=True, text=True, env=_GIT_REMOTE_ENV
+            )
+            if push_result.returncode == 0:
+                return "pushed branch '{}'".format(branch_name)
+            return ""
+
+        # Check how many commits ahead
+        ahead = subprocess.run(
+            ["git", "-C", resolved, "rev-list", "--count", "@{u}..HEAD"],
+            capture_output=True, text=True
+        )
+        count = ahead.stdout.strip()
+        if count == "0":
+            return ""
+
+        # Push current branch
+        push_result = subprocess.run(
+            ["git", "-C", resolved, "push"],
+            capture_output=True, text=True, env=_GIT_REMOTE_ENV
+        )
+        if push_result.returncode == 0:
+            print(
+                "\n[{}] pushed {} unpushed commit(s)".format(
+                    path_entry['folder_name'], count)
+            )
+            return "pushed {} commit(s)".format(count)
+
+        # Push failed — fall back to zip if we have dirty commits worth saving
+        print(
+            "\n[{}] has {} unpushed commit(s) but push failed — "
+            "falling back to zip backup".format(
+                path_entry['folder_name'], count)
+        )
+        fallback = self._resolve_fallback_source()
+        if not fallback:
+            return "{} unpushed commit(s), push failed, no fallback".format(count)
+
+        # Bundle the unpushed commits as a git bundle file and back up
+        fallback_dest = self._fallback_bundle_to_backup(
+            resolved, path_entry, config_path)
+        if fallback_dest:
+            return "{} unpushed commit(s) bundled to {}".format(count, fallback_dest)
+        return "{} unpushed commit(s), push failed".format(count)
+
+    def _fallback_bundle_to_backup(self, resolved, path_entry, config_path):
+        """
+        Creates a git bundle of unpushed commits and backs it up via fallback source.
+        """
+        from .aws import AwsSource
+        from .local import LocalSource
+
+        fallback_source = self._resolve_fallback_source()
+        if not fallback_source:
+            return None
+
+        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        bundle_name = "{}-unpushed-{}.bundle".format(
+            path_entry["folder_name"], timestamp)
+
+        # Create bundle of commits not on the remote
+        result = subprocess.run(
+            ["git", "-C", resolved, "bundle", "create", bundle_name,
+             "--not", "--remotes", "--all"],
+            capture_output=True, text=True
+        )
+        if result.returncode != 0:
+            return None
+
+        bundle_path = os.path.join(resolved, bundle_name)
+        try:
+            if fallback_source == "s3":
+                handler = AwsSource(self.config_data)
+                s3 = handler._get_s3_client()
+                key = "{}/{}/{}".format(
+                    self.workspace_name, path_entry["folder_name"], bundle_name)
+                s3.upload_file(bundle_path, handler.BUCKET_NAME, key)
+                dest = "s3://{}/{}".format(handler.BUCKET_NAME, key)
+            else:
+                handler = LocalSource(self.config_data)
+                dest_dir = os.path.join(
+                    handler.local_path, self.workspace_name, path_entry["folder_name"])
+                os.makedirs(dest_dir, exist_ok=True)
+                import shutil
+                dest = os.path.join(dest_dir, bundle_name)
+                shutil.copy(bundle_path, dest)
+        finally:
+            if os.path.exists(bundle_path):
+                os.remove(bundle_path)
+
+        if config_path:
+            self._update_config_with_fallback(config_path, path_entry, fallback_source)
+
+        return "{} ({})".format(fallback_source, dest)
+
     def backup_path(self, path_entry, paths_to_exclude, config_path=None):
         """
         Checks if the repo is clean. If dirty:
@@ -240,8 +355,12 @@ class GitSource(BaseSource):
             ["git", "-C", resolved, "status", "--porcelain"],
             capture_output=True, text=True
         )
-        if not result.stdout.strip():
-            return "success", ""
+        is_clean = not result.stdout.strip()
+
+        if is_clean:
+            # Worktree is clean — check for unpushed commits
+            push_note = self._push_unpushed_commits(resolved, path_entry, config_path)
+            return "success", push_note
 
         code_files, non_code_files = self._parse_dirty_files(
             resolved, result.stdout, paths_to_exclude)
@@ -281,13 +400,14 @@ class GitSource(BaseSource):
                         path_entry['folder_name'], e.stderr.strip() if e.stderr else e)
                 )
 
+        # Also push any prior unpushed commits on the current branch
+        unpushed_note = self._push_unpushed_commits(resolved, path_entry, config_path)
+
         if not non_code_files:
-            if dump_branch:
-                if pushed:
-                    return "success", "pushed to {}".format(dump_branch)
-                if fallback_dest:
-                    return "success", "zip backed up to {}".format(fallback_dest)
-                return "success", "local branch only: {}".format(dump_branch)
+            dump_note = self._dump_note(dump_branch, pushed, fallback_dest)
+            parts = [n for n in [dump_note, unpushed_note] if n]
+            if parts:
+                return "success", "; ".join(parts)
             return "skipped", "uncommitted changes"
 
         # Non-code files need user attention
@@ -311,18 +431,20 @@ class GitSource(BaseSource):
                     capture_output=True, text=True
                 )
                 if not result.stdout.strip():
-                    return "success", self._dump_note(dump_branch, pushed, fallback_dest)
+                    parts = [n for n in [self._dump_note(dump_branch, pushed, fallback_dest), unpushed_note] if n]
+                    return "success", "; ".join(parts)
                 _, non_code_files = self._parse_dirty_files(
                     resolved, result.stdout, paths_to_exclude)
                 if not non_code_files:
-                    return "success", self._dump_note(dump_branch, pushed, fallback_dest)
+                    parts = [n for n in [self._dump_note(dump_branch, pushed, fallback_dest), unpushed_note] if n]
+                    return "success", "; ".join(parts)
                 continue
 
             # Continue / timeout — skip with note
-            code_note = self._dump_note(dump_branch, pushed, fallback_dest)
+            parts = [n for n in [self._dump_note(dump_branch, pushed, fallback_dest), unpushed_note] if n]
             note = "{} non-code file(s) uncommitted".format(len(non_code_files))
-            if code_note:
-                note = "{}; {}".format(code_note, note)
+            if parts:
+                note = "{}; {}".format("; ".join(parts), note)
             return "skipped", note
 
     def check_remote(self, path_entry):
@@ -368,15 +490,42 @@ class GitSource(BaseSource):
 
         return (remote_url, None, None)
 
+    def _count_unpushed(self, resolved):
+        """Returns the number of commits ahead of the upstream, or None if no upstream."""
+        upstream = subprocess.run(
+            ["git", "-C", resolved, "rev-parse", "--abbrev-ref", "@{u}"],
+            capture_output=True, text=True
+        )
+        if upstream.returncode != 0:
+            return None
+        ahead = subprocess.run(
+            ["git", "-C", resolved, "rev-list", "--count", "@{u}..HEAD"],
+            capture_output=True, text=True
+        )
+        if ahead.returncode != 0:
+            return None
+        count = ahead.stdout.strip()
+        return int(count) if count.isdigit() else None
+
     def dry_run_path(self, path_entry, paths_to_exclude):
         """
-        Reports dirty files classified as code (auto-dump) vs non-code (needs attention).
+        Reports dirty files, unpushed commits, classified as code vs non-code.
         Returns list of (file_path, issue_description) tuples.
         """
         resolved = self._resolve_path(path_entry)
 
         if not os.path.exists(resolved):
             return [(resolved, "path does not exist")]
+
+        issues = []
+
+        # Check for unpushed commits
+        unpushed = self._count_unpushed(resolved)
+        if unpushed is None:
+            issues.append(("no upstream", "branch has no remote tracking — will attempt push"))
+        elif unpushed > 0:
+            issues.append(("{} unpushed commit(s)".format(unpushed),
+                           "will be pushed to remote"))
 
         result = subprocess.run(
             ["git", "-C", resolved, "status", "--porcelain"],
@@ -385,21 +534,19 @@ class GitSource(BaseSource):
         )
 
         if result.returncode != 0:
-            return [(".", "git status failed: {}".format(result.stderr.strip()))]
+            issues.append((".", "git status failed: {}".format(result.stderr.strip())))
+            return issues
 
-        if not result.stdout.strip():
-            return []
+        if result.stdout.strip():
+            code_files, non_code_files = self._parse_dirty_files(
+                resolved, result.stdout, paths_to_exclude)
 
-        code_files, non_code_files = self._parse_dirty_files(
-            resolved, result.stdout, paths_to_exclude)
-
-        issues = []
-        if code_files:
-            issues.append(("{} code file(s)".format(len(code_files)),
-                           "will be auto-dumped to local-dump branch"))
-        if non_code_files:
-            issues.append(("{} non-code file(s)".format(len(non_code_files)),
-                           "requires manual attention"))
+            if code_files:
+                issues.append(("{} code file(s)".format(len(code_files)),
+                               "will be auto-dumped to local-dump branch"))
+            if non_code_files:
+                issues.append(("{} non-code file(s)".format(len(non_code_files)),
+                               "requires manual attention"))
 
         return issues
 

@@ -16,8 +16,13 @@ def test_backup_path_clean_repo(new_config, tmp_path):
     (tmp_path / "test-workspace" / "notes").mkdir(parents=True)
     source = GitSource(new_config)
 
-    with patch("subprocess.run") as mock_run:
-        mock_run.return_value = MagicMock(stdout="", returncode=0)
+    def mock_side_effect(cmd, **kwargs):
+        # rev-list --count should return "0" for no unpushed commits
+        if "rev-list" in cmd and "--count" in cmd:
+            return MagicMock(stdout="0", returncode=0)
+        return MagicMock(stdout="", returncode=0)
+
+    with patch("subprocess.run", side_effect=mock_side_effect):
         status, note = source.backup_path(_GIT_PATH_ENTRY, [])
 
     assert status == "success"
