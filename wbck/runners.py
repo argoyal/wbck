@@ -2,7 +2,7 @@ import os
 import json
 import shutil
 from .sources import AwsSource, LocalSource, GitSource
-from .utils import open_log, write_log, print_summary
+from .utils import open_log, write_log, print_summary, print_dry_run_summary
 
 
 _PKG_DIR = os.path.dirname(__file__)
@@ -42,11 +42,15 @@ def setup_from_template(workspace_name, workspace_path, config_folder):
         json.dump(data, f)
 
 
-def backup_data(config_path):
+def backup_data(config_path, dry_run=False):
     """
     Path-centric backup. If workspace enabled=0, performs full archival.
     Otherwise iterates paths_to_include and dispatches to per-source handlers.
     Logs all results and prints a summary at the end.
+
+    When dry_run=True, validates each path without performing the actual backup:
+    - Git sources: reports staged and unstaged changes
+    - S3/local sources: runs the zip cycle to catch per-file issues
     """
     with open(config_path, 'r') as f:
         config_data = json.load(f)
@@ -54,7 +58,7 @@ def backup_data(config_path):
     workspace_name = config_data["name"]
     is_enabled = bool(config_data["enabled"])
 
-    if not is_enabled:
+    if not is_enabled and not dry_run:
         enabled_sources = [
             src
             for src in config_data.get("source_credentials", {})
@@ -81,9 +85,45 @@ def backup_data(config_path):
         handler.archive_data()
         return
 
+    if not is_enabled and dry_run:
+        print("DRY RUN — workspace '{}' is disabled, checking full workspace zip".format(
+            workspace_name))
+        from .sources.base import BaseSource
+        handler = BaseSource(config_data)
+        print("  checking full workspace archive ...")
+        try:
+            issues = handler.dry_run_full_workspace()
+        except Exception as e:
+            issues = [(".", str(e))]
+        dry_results = [(workspace_name, "archive", issues)]
+        print_dry_run_summary(dry_results, workspace_name)
+        return
+
+    paths_to_exclude = config_data.get("paths_to_exclude", [])
+
+    if dry_run:
+        print("DRY RUN — checking paths for '{}'".format(workspace_name))
+        dry_results = []
+
+        for path_entry in config_data.get("paths_to_include", []):
+            if not bool(path_entry.get("enabled", 1)):
+                dry_results.append((path_entry["folder_name"], "—", [(".", "disabled in config")]))
+                continue
+
+            for source in path_entry.get("backup_source", []):
+                handler = _get_handler(source, config_data)
+                print("  checking {} [{}] ...".format(path_entry["folder_name"], source))
+                try:
+                    issues = handler.dry_run_path(path_entry, paths_to_exclude)
+                except Exception as e:
+                    issues = [(".", str(e))]
+                dry_results.append((path_entry["folder_name"], source, issues))
+
+        print_dry_run_summary(dry_results, workspace_name)
+        return
+
     log_fh, log_path = open_log(workspace_name)
     results = []
-    paths_to_exclude = config_data.get("paths_to_exclude", [])
 
     try:
         for path_entry in config_data.get("paths_to_include", []):
@@ -106,10 +146,11 @@ def backup_data(config_path):
     print_summary(results, workspace_name, log_path)
 
 
-def restore_data(config_path, force=False):
+def restore_data(config_path, force=False, keep_remote=False):
     """
     Path-centric restore. Skips disabled workspaces unless --force.
     --force restores from the full workspace archive.
+    --keep-remote-data prevents deletion of the backup from the remote source.
     Otherwise iterates paths_to_include and dispatches to per-source handlers.
     """
     with open(config_path, 'r') as f:
@@ -148,7 +189,7 @@ def restore_data(config_path, force=False):
         handler = _get_handler(choice, config_data)
         print("Force-restoring archive for workspace '{}' using {}".format(
             config_data["name"], choice))
-        handler.restore_archive_data()
+        handler.restore_archive_data(keep_remote=keep_remote)
         return
 
     for path_entry in config_data.get("paths_to_include", []):
@@ -159,4 +200,4 @@ def restore_data(config_path, force=False):
         for source in path_entry.get("backup_source", []):
             handler = _get_handler(source, config_data)
             print("Restoring '{}' using {}".format(path_entry["folder_name"], source))
-            handler.restore_path(path_entry)
+            handler.restore_path(path_entry, keep_remote=keep_remote)

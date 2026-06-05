@@ -42,9 +42,104 @@ class BaseSource(object):
         """
         raise NotImplementedError()
 
-    def restore_path(self, path_entry):
+    def restore_path(self, path_entry, keep_remote=False):
         """Restore a single path entry. Returns status string."""
         raise NotImplementedError()
+
+    def dry_run_path(self, path_entry, paths_to_exclude):
+        """
+        Trial-zip every file in the path entry to surface per-file issues.
+        Returns list of (relative_path, issue_description) tuples.
+        """
+        resolved = self._resolve_path(path_entry)
+
+        if not os.path.exists(resolved):
+            return [(resolved, "path does not exist")]
+
+        issues = []
+        tmp_zip = os.path.join(
+            self.workspace_path,
+            ".wbck-dryrun-{}.zip".format(path_entry["folder_name"]),
+        )
+
+        try:
+            zipf = zipfile.ZipFile(tmp_zip, 'w', zipfile.ZIP_DEFLATED)
+            try:
+                for root, dirs, files in os.walk(resolved):
+                    rel_root = os.path.relpath(root, resolved)
+                    dirs[:] = [
+                        d for d in dirs
+                        if d not in paths_to_exclude
+                        and os.path.join(rel_root, d) not in paths_to_exclude
+                    ]
+                    for file in files:
+                        rel_file = os.path.join(rel_root, file)
+                        if file in paths_to_exclude or rel_file in paths_to_exclude:
+                            continue
+                        fpath = os.path.join(root, file)
+                        arcname = os.path.relpath(fpath, os.path.join(resolved, '..'))
+                        try:
+                            zipf.write(fpath, arcname)
+                        except Exception as e:
+                            rel = os.path.relpath(fpath, resolved)
+                            issues.append((rel, str(e)))
+            finally:
+                zipf.close()
+        except Exception as e:
+            issues.append((".", "failed to create zip: {}".format(e)))
+        finally:
+            if os.path.exists(tmp_zip):
+                os.remove(tmp_zip)
+
+        return issues
+
+    def dry_run_full_workspace(self):
+        """
+        Trial-zip the entire workspace directory (mirrors generate_full_compressed_data).
+        Used for disabled workspaces where the real backup archives everything.
+        Returns list of (relative_path, issue_description) tuples.
+        """
+        workspace_dir = os.path.join(self.workspace_path, self.workspace_name)
+
+        if not os.path.exists(workspace_dir):
+            return [(workspace_dir, "workspace directory does not exist")]
+
+        issues = []
+        tmp_zip = os.path.join(
+            self.workspace_path,
+            ".wbck-dryrun-full-{}.zip".format(self.workspace_name),
+        )
+
+        try:
+            zipf = zipfile.ZipFile(tmp_zip, 'w', zipfile.ZIP_DEFLATED)
+            try:
+                for root, dirs, files in os.walk(workspace_dir):
+                    rel_root = os.path.relpath(root, workspace_dir)
+                    dirs[:] = [
+                        d for d in dirs
+                        if d not in self.paths_to_exclude
+                        and os.path.join(rel_root, d) not in self.paths_to_exclude
+                    ]
+                    for file in files:
+                        rel_file = os.path.join(rel_root, file)
+                        if file in self.paths_to_exclude or rel_file in self.paths_to_exclude:
+                            continue
+                        fpath = os.path.join(root, file)
+                        arcname = os.path.relpath(fpath, os.path.join(workspace_dir, '..'))
+                        try:
+                            zipf.write(fpath, arcname)
+                        except Exception as e:
+                            rel = os.path.relpath(fpath, workspace_dir)
+                            issues.append((rel, str(e)))
+            finally:
+                zipf.close()
+        except Exception as e:
+            issues.append((".", "failed to create zip: {}".format(e)))
+        finally:
+            if os.path.exists(tmp_zip):
+                os.remove(tmp_zip)
+
+        return issues
 
     # ------------------------------------------------------------------ #
     # Path-level helpers
@@ -83,7 +178,7 @@ class BaseSource(object):
     def restore_data(self):
         raise NotImplementedError()
 
-    def restore_archive_data(self):
+    def restore_archive_data(self, keep_remote=False):
         raise NotImplementedError()
 
     def perform_cleanup(self):

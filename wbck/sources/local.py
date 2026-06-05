@@ -45,8 +45,8 @@ class LocalSource(BaseSource):
 
         return "success", ""
 
-    def restore_path(self, path_entry):
-        """Copies zip from local source, extracts it, then deletes the source zip."""
+    def restore_path(self, path_entry, keep_remote=False):
+        """Copies zip from local source, extracts it, then deletes the source zip unless keep_remote."""
         source_zip = self._dest_path_for_entry(path_entry)
 
         date = datetime.now().date().isoformat()
@@ -59,8 +59,9 @@ class LocalSource(BaseSource):
             target = os.path.join(self.workspace_path, self.workspace_name)
             with zipfile.ZipFile(local_zip, 'r') as zf:
                 zf.extractall(target)
-            print("======================> Deleting source zip {}".format(source_zip))
-            os.remove(source_zip)
+            if not keep_remote:
+                print("======================> Deleting source zip {}".format(source_zip))
+                os.remove(source_zip)
         finally:
             if os.path.exists(local_zip):
                 os.remove(local_zip)
@@ -80,13 +81,14 @@ class LocalSource(BaseSource):
         shutil.copy(self.archive_zip_name, self.local_path)
         self.perform_archive_cleanup()
 
-    def restore_archive_data(self):
+    def restore_archive_data(self, keep_remote=False):
         print("======================> Downloading archive {} from folder {}".format(
             self.archive_zip_name, self.local_path))
         archive_path = os.path.join(self.local_path, self.archive_zip_name)
         shutil.copy(archive_path, self.archive_zip_name)
         self.extract_from_archive_data()
-        self.perform_archive_cleanup()
+        if not keep_remote:
+            self.perform_archive_cleanup()
 
     def backup_data(self):
         if not os.path.exists(self.local_path):

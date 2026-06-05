@@ -61,8 +61,8 @@ class AwsSource(BaseSource):
 
         return "success", ""
 
-    def restore_path(self, path_entry):
-        """Downloads zip from S3, extracts it, then deletes the S3 object."""
+    def restore_path(self, path_entry, keep_remote=False):
+        """Downloads zip from S3, extracts it, then deletes the S3 object unless keep_remote."""
         key = self._s3_key_for_path(path_entry)
         date = datetime.now().date().isoformat()
         zip_name = "{}-{}.zip".format(path_entry["folder_name"], date)
@@ -77,8 +77,9 @@ class AwsSource(BaseSource):
             target = os.path.join(self.workspace_path, self.workspace_name)
             with zipfile.ZipFile(zip_name, 'r') as zf:
                 zf.extractall(target)
-            print("======================> Deleting s3://{}/{}".format(self.BUCKET_NAME, key))
-            s3.delete_object(Bucket=self.BUCKET_NAME, Key=key)
+            if not keep_remote:
+                print("======================> Deleting s3://{}/{}".format(self.BUCKET_NAME, key))
+                s3.delete_object(Bucket=self.BUCKET_NAME, Key=key)
         finally:
             if os.path.exists(zip_name):
                 os.remove(zip_name)
@@ -113,10 +114,11 @@ class AwsSource(BaseSource):
         self.extract_from_compressed_data()
         self.perform_cleanup()
 
-    def restore_archive_data(self):
+    def restore_archive_data(self, keep_remote=False):
         print("======================> Downloading archive {} from bucket {}".format(
             self.archive_zip_name, self.BUCKET_NAME))
         s3 = self._get_s3_client()
         s3.download_file(self.BUCKET_NAME, self.archive_s3_key, self.archive_zip_name)
         self.extract_from_archive_data()
-        self.perform_archive_cleanup()
+        if not keep_remote:
+            self.perform_archive_cleanup()

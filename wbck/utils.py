@@ -5,9 +5,14 @@ from datetime import datetime
 
 def zipdir(path, ziph, ignore=[]):
     for root, dirs, files in os.walk(path):
-        dirs[:] = [d for d in dirs if d not in ignore]
+        rel_root = os.path.relpath(root, path)
+        dirs[:] = [
+            d for d in dirs
+            if d not in ignore and os.path.join(rel_root, d) not in ignore
+        ]
         for file in files:
-            if file in ignore:
+            rel_file = os.path.join(rel_root, file)
+            if file in ignore or rel_file in ignore:
                 continue
             ziph.write(
                 os.path.join(root, file),
@@ -63,3 +68,37 @@ def print_summary(results, workspace_name, log_path):
 
     print(" · ".join(parts))
     print(f"\nFull log: {log_path}")
+
+
+def print_dry_run_summary(results, workspace_name):
+    """
+    Prints the dry-run summary table.
+    results: list of (folder_name, source, issues) where issues is list of (file, issue).
+    """
+    print(f"\nDRY-RUN SUMMARY — {workspace_name}")
+    print("═" * 80)
+
+    total_paths = len(results)
+    paths_with_issues = 0
+    total_issues = 0
+
+    for folder_name, source, issues in results:
+        label = f"{folder_name} [{source}]"
+        if not issues:
+            print(f" {label:<40} OK")
+            continue
+        paths_with_issues += 1
+        total_issues += len(issues)
+        print(f"\n {label}")
+        print(f" {'File':<50} Issue")
+        print(" " + "─" * 78)
+        for fpath, issue in issues:
+            print(f" {fpath:<50} {issue}")
+
+    print("═" * 80)
+    parts = [f"{total_paths} paths checked"]
+    if paths_with_issues:
+        parts.append(f"{paths_with_issues} with issues ({total_issues} files)")
+    else:
+        parts.append("no issues found")
+    print(" · ".join(parts))

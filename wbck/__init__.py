@@ -1,5 +1,6 @@
 import os
 import argparse
+from importlib.metadata import version as _pkg_version
 from .runners import backup_data, restore_data, setup_from_template
 from .cache import get_active_config_path, get_config_path_by_name, has_config_folder, set_config_folder, use_config, show_configs, clear_cache
 
@@ -25,12 +26,12 @@ def _resolve_config_path(args):
 
 def restore_workspace(args):
     config_path = _resolve_config_path(args)
-    restore_data(config_path, force=args.force)
+    restore_data(config_path, force=args.force, keep_remote=args.keep_remote_data)
 
 
 def backup_workspace(args):
     config_path = _resolve_config_path(args)
-    backup_data(config_path)
+    backup_data(config_path, dry_run=args.dry_run)
 
 
 def create_new_workspace(args):
@@ -54,6 +55,11 @@ def manage_cache(args):
 def cli():
     parser = argparse.ArgumentParser(
         description='Application to backup and restore my workspace data using config files'
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version="wbck {}".format(_pkg_version("wbck"))
     )
     subparsers = parser.add_subparsers(title="Commands")
 
@@ -85,10 +91,22 @@ def cli():
         default=None,
         help="explicit config file path (used only when no cache folder is set)"
     )
+    backup_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        default=False,
+        help="validate all paths without performing the actual backup"
+    )
     backup_parser.set_defaults(func=backup_workspace)
 
     # restore
     restore_parser = subparsers.add_parser("restore", help="restore your workspace")
+    restore_parser.add_argument(
+        "name",
+        nargs="?",
+        default=None,
+        help="workspace name to restore (resolved from cached config folder)"
+    )
     restore_parser.add_argument(
         "--config-path",
         default=None,
@@ -99,6 +117,12 @@ def cli():
         action="store_true",
         default=False,
         help="force restore from full archive even if the workspace is disabled"
+    )
+    restore_parser.add_argument(
+        "--keep-remote-data",
+        action="store_true",
+        default=False,
+        help="do not delete the backup from the remote source after restoring"
     )
     restore_parser.set_defaults(func=restore_workspace)
 
