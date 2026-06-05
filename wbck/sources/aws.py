@@ -1,4 +1,6 @@
+import os
 import boto3
+from datetime import datetime
 
 from .base import BaseSource
 
@@ -7,12 +9,13 @@ class AwsSource(BaseSource):
 
     def __init__(self, config_data):
         super().__init__(config_data)
-        s3_config = self.source_settings["s3"]
-        self.AWS_KEY = s3_config.get("aws_key", "")
-        self.AWS_SECRET = s3_config.get("aws_secret", "")
-        self.AWS_PROFILE = s3_config.get("aws_profile", "")
+        s3_creds = self.source_credentials.get("s3", {})
+        self.AWS_KEY = s3_creds.get("aws_key", "")
+        self.AWS_SECRET = s3_creds.get("aws_secret", "")
+        self.AWS_PROFILE = s3_creds.get("aws_profile", "")
+        self.BUCKET_NAME = s3_creds.get("root_path", "")
 
-        self.BUCKET_NAME = s3_config["bucket_name"]
+        # workspace-level archival keys (enabled=0 flow)
         self.s3_key = "{}/{}".format(self.workspace_name, self.zip_name)
         self.archive_s3_key = "{}/{}".format(self.workspace_name, self.archive_zip_name)
 
@@ -29,63 +32,92 @@ class AwsSource(BaseSource):
             "S3 configuration requires either 'aws_profile' or both 'aws_key' and 'aws_secret'."
         )
 
+    def _s3_key_for_path(self, path_entry):
+        """Returns the S3 key to use: backup_location override or generated default."""
+        if path_entry.get("backup_location"):
+            return path_entry["backup_location"]
+        date = datetime.now().date().isoformat()
+        return "{}/{}-{}.zip".format(self.workspace_name, path_entry["folder_name"], date)
+
+    # ------------------------------------------------------------------ #
+    # Path-level methods
+    # ------------------------------------------------------------------ #
+
+    def backup_path(self, path_entry, paths_to_exclude):
+        """Zips the path and uploads to S3. Returns ('success'|'failed', note)."""
+        zip_name = self._make_path_zip(path_entry, paths_to_exclude)
+        key = self._s3_key_for_path(path_entry)
+
+        print("======================> Uploading {} to s3://{}/{}".format(
+            zip_name, self.BUCKET_NAME, key))
+
+        try:
+            s3 = self._get_s3_client()
+            s3.upload_file(zip_name, self.BUCKET_NAME, key)
+        finally:
+            if os.path.exists(zip_name):
+                os.remove(zip_name)
+
+        return "success", ""
+
+    def restore_path(self, path_entry):
+        """Downloads zip from S3, extracts it, then deletes the S3 object."""
+        key = self._s3_key_for_path(path_entry)
+        date = datetime.now().date().isoformat()
+        zip_name = "{}-{}.zip".format(path_entry["folder_name"], date)
+
+        print("======================> Downloading s3://{}/{} to {}".format(
+            self.BUCKET_NAME, key, zip_name))
+
+        s3 = self._get_s3_client()
+        s3.download_file(self.BUCKET_NAME, key, zip_name)
+
+        try:
+            import zipfile
+            target = os.path.join(self.workspace_path, self.workspace_name)
+            with zipfile.ZipFile(zip_name, 'r') as zf:
+                zf.extractall(target)
+        finally:
+            if os.path.exists(zip_name):
+                os.remove(zip_name)
+
+        print("======================> Deleting s3://{}/{}".format(self.BUCKET_NAME, key))
+        s3.delete_object(Bucket=self.BUCKET_NAME, Key=key)
+
+        return "success"
+
+    # ------------------------------------------------------------------ #
+    # Workspace-level archival methods (enabled=0 flow)
+    # ------------------------------------------------------------------ #
+
     def archive_data(self):
-        """
-        archives the full workspace to the AWS s3 bucket
-        """
-
         self.generate_full_compressed_data()
-
         print("======================> Uploading archive {} to bucket {}".format(
             self.archive_zip_name, self.BUCKET_NAME))
-
         s3 = self._get_s3_client()
         s3.upload_file(self.archive_zip_name, self.BUCKET_NAME, self.archive_s3_key)
-
-        self.perform_archive_cleanup()
-
-    def restore_archive_data(self):
-        """
-        restores the full workspace archive from the AWS s3 bucket
-        """
-
-        print("======================> Downloading archive {} from bucket {}".format(
-            self.archive_zip_name, self.BUCKET_NAME))
-
-        s3 = self._get_s3_client()
-        s3.download_file(self.BUCKET_NAME, self.archive_s3_key, self.archive_zip_name)
-
-        self.extract_from_archive_data()
-
         self.perform_archive_cleanup()
 
     def backup_data(self):
-        """
-        backs up data to the AWS s3 bucket as per configuration
-        """
-
         self.generate_compressed_data()
-
         print("======================> Uploading file {} to bucket {}".format(
             self.zip_name, self.BUCKET_NAME))
-
         s3 = self._get_s3_client()
         s3.upload_file(self.zip_name, self.BUCKET_NAME, self.s3_key)
-
         self.perform_cleanup()
-
 
     def restore_data(self):
-        """
-        restores data from AWS s3 bucket as per configuration
-        """
-
         print("======================> Downloading file {} from bucket {}".format(
             self.zip_name, self.BUCKET_NAME))
-
         s3 = self._get_s3_client()
         s3.download_file(self.BUCKET_NAME, self.s3_key, self.zip_name)
-
         self.extract_from_compressed_data()
-
         self.perform_cleanup()
+
+    def restore_archive_data(self):
+        print("======================> Downloading archive {} from bucket {}".format(
+            self.archive_zip_name, self.BUCKET_NAME))
+        s3 = self._get_s3_client()
+        s3.download_file(self.BUCKET_NAME, self.archive_s3_key, self.archive_zip_name)
+        self.extract_from_archive_data()
+        self.perform_archive_cleanup()
