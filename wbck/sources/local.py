@@ -10,6 +10,23 @@ class LocalSource(BaseSource):
         
         self.local_path = self.source_settings["local"]["local_path"]
 
+    def archive_data(self):
+        """
+        archives the full workspace to a local path specified in the configurations
+        """
+
+        if not os.path.exists(self.local_path):
+            raise FileNotFoundError(f"{self.local_path} does not exist")
+
+        self.generate_full_compressed_data()
+
+        print("======================> Uploading archive {} to folder {}".format(
+            self.archive_zip_name, self.local_path))
+
+        shutil.copy(self.archive_zip_name, self.local_path)
+
+        self.perform_archive_cleanup()
+
     def backup_data(self):
         """
         backs up data to a local path specified in the configurations

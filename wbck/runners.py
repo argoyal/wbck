@@ -40,7 +40,8 @@ def setup_from_template(workspace_name, workspace_path, config_folder):
 def backup_data(config_path):
     """
     calls the appropriate backup data class depending
-    on enabled sources
+    on enabled sources. If the workspace is disabled, performs a full
+    archival backup instead of a normal incremental backup.
     """
 
     with open(config_path, 'r') as f:
@@ -52,20 +53,30 @@ def backup_data(config_path):
     }
 
     enabled_sources = config_data["source_settings"]["enabled_sources"]
+    is_enabled = bool(config_data["enabled"])
 
     for src in enabled_sources:
-        print("Backing up data using {}".format(src))
-        class_mapping[src].backup_data()
+        if is_enabled:
+            print("Backing up data using {}".format(src))
+            class_mapping[src].backup_data()
+        else:
+            print("Workspace is disabled — archiving full workspace using {}".format(src))
+            class_mapping[src].archive_data()
 
 
 def restore_data(config_path):
     """
     calls the appropriate restore data class depending
-    on enabled sources
+    on enabled sources. Skips restoration if the workspace is disabled.
     """
 
     with open(config_path, 'r') as f:
         config_data = json.load(f)
+
+    if not bool(config_data["enabled"]):
+        print("Skipping workspace '{}' — it is disabled and marked for archival. "
+              "Set enabled=1 in the config to restore it.".format(config_data["name"]))
+        return
 
     class_mapping = {
         "s3": AwsSource(config_data),
@@ -77,5 +88,5 @@ def restore_data(config_path):
     clone_repositories(config_data)
 
     for src in enabled_sources:
-        print("Backing up data using {}".format(src))
+        print("Restoring data using {}".format(src))
         class_mapping[src].restore_data()

@@ -14,6 +14,7 @@ class AwsSource(BaseSource):
 
         self.BUCKET_NAME = s3_config["bucket_name"]
         self.s3_key = "{}/{}".format(self.workspace_name, self.zip_name)
+        self.archive_s3_key = "{}/{}".format(self.workspace_name, self.archive_zip_name)
 
     def _get_s3_client(self):
         if self.AWS_PROFILE:
@@ -27,6 +28,21 @@ class AwsSource(BaseSource):
         raise ValueError(
             "S3 configuration requires either 'aws_profile' or both 'aws_key' and 'aws_secret'."
         )
+
+    def archive_data(self):
+        """
+        archives the full workspace to the AWS s3 bucket
+        """
+
+        self.generate_full_compressed_data()
+
+        print("======================> Uploading archive {} to bucket {}".format(
+            self.archive_zip_name, self.BUCKET_NAME))
+
+        s3 = self._get_s3_client()
+        s3.upload_file(self.archive_zip_name, self.BUCKET_NAME, self.archive_s3_key)
+
+        self.perform_archive_cleanup()
 
     def backup_data(self):
         """

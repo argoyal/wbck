@@ -1,7 +1,6 @@
 import os
 import argparse
 from .runners import backup_data, restore_data, setup_from_template
-from .load_config import is_config_loadable
 from .cache import get_active_config_path, set_config_folder, use_config, show_configs, clear_cache
 
 
@@ -19,13 +18,11 @@ def _resolve_config_path(args):
 
 def restore_workspace(args):
     config_path = _resolve_config_path(args)
-    is_config_loadable(config_path)
     restore_data(config_path)
 
 
 def backup_workspace(args):
     config_path = _resolve_config_path(args)
-    is_config_loadable(config_path)
     backup_data(config_path)
 
 

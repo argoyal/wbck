@@ -20,18 +20,20 @@ class BaseSource(object):
         self.workspace_path = os.getenv("HOME") if not config_data["workspace_path"] else \
             config_data["workspace_path"]
         
-        self.zip_name = "{}-{}.zip".format(
-            self.workspace_name,
-            datetime.now().date().isoformat()
-        )
+        _today = datetime.now().date().isoformat()
+        self.zip_name = "{}-{}.zip".format(self.workspace_name, _today)
+        self.archive_zip_name = "{}-archive-{}.zip".format(self.workspace_name, _today)
         self.tmp_path = os.path.join(self.workspace_path, self.workspace_name, 'tmp')
 
     def backup_data(self):
         raise NotImplementedError()
-    
+
+    def archive_data(self):
+        raise NotImplementedError()
+
     def restore_data(self):
         raise NotImplementedError()
-    
+
     def perform_cleanup(self):
         """
         performs cleanup of the artifacts generated during the backup process
@@ -39,7 +41,14 @@ class BaseSource(object):
 
         os.remove(self.zip_name)
         shutil.rmtree(self.tmp_path)
-    
+
+    def perform_archive_cleanup(self):
+        """
+        performs cleanup of the archive zip generated during archival
+        """
+
+        os.remove(self.archive_zip_name)
+
     def generate_compressed_data(self):
         """
         generates the compressed version of the data to backup
@@ -66,6 +75,17 @@ class BaseSource(object):
             self.zip_name, 'w', zipfile.ZIP_DEFLATED
         )
         zipdir(self.tmp_path, zipf, self.source_settings['files_to_exclude'])
+        zipf.close()
+
+    def generate_full_compressed_data(self):
+        """
+        generates a compressed archive of the entire workspace folder
+        """
+
+        workspace_dir = os.path.join(self.workspace_path, self.workspace_name)
+        print(f"Generating full archive zip {self.archive_zip_name}")
+        zipf = zipfile.ZipFile(self.archive_zip_name, 'w', zipfile.ZIP_DEFLATED)
+        zipdir(workspace_dir, zipf, self.source_settings['files_to_exclude'])
         zipf.close()
 
     def extract_from_compressed_data(self):
