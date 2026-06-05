@@ -112,3 +112,9 @@ def test_restore_path_downloads_and_deletes(new_config, tmp_path):
     assert mock_s3.delete_object.called
     delete_args = mock_s3.delete_object.call_args[1]
     assert delete_args["Bucket"] == "my-bucket"
+
+    # Verify extracted file exists at the expected location
+    # The file is extracted to workspace_path / workspace_name (which is tmp_path)
+    extracted_file = tmp_path / "test-workspace" / "notes" / "hello.txt"
+    assert extracted_file.exists()
+    assert extracted_file.read_text() == "world"

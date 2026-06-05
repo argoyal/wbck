@@ -1,4 +1,5 @@
 import os
+import zipfile
 import boto3
 from datetime import datetime
 
@@ -73,16 +74,14 @@ class AwsSource(BaseSource):
         s3.download_file(self.BUCKET_NAME, key, zip_name)
 
         try:
-            import zipfile
             target = os.path.join(self.workspace_path, self.workspace_name)
             with zipfile.ZipFile(zip_name, 'r') as zf:
                 zf.extractall(target)
+            print("======================> Deleting s3://{}/{}".format(self.BUCKET_NAME, key))
+            s3.delete_object(Bucket=self.BUCKET_NAME, Key=key)
         finally:
             if os.path.exists(zip_name):
                 os.remove(zip_name)
-
-        print("======================> Deleting s3://{}/{}".format(self.BUCKET_NAME, key))
-        s3.delete_object(Bucket=self.BUCKET_NAME, Key=key)
 
         return "success"
 
