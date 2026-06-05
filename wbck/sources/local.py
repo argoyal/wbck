@@ -27,6 +27,21 @@ class LocalSource(BaseSource):
 
         self.perform_archive_cleanup()
 
+    def restore_archive_data(self):
+        """
+        restores the full workspace archive from a local path specified in the configurations
+        """
+
+        print("======================> Downloading archive {} from folder {}".format(
+            self.archive_zip_name, self.local_path))
+
+        archive_path = os.path.join(self.local_path, self.archive_zip_name)
+        shutil.copy(archive_path, self.archive_zip_name)
+
+        self.extract_from_archive_data()
+
+        self.perform_archive_cleanup()
+
     def backup_data(self):
         """
         backs up data to a local path specified in the configurations

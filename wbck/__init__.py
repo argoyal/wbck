@@ -18,7 +18,7 @@ def _resolve_config_path(args):
 
 def restore_workspace(args):
     config_path = _resolve_config_path(args)
-    restore_data(config_path)
+    restore_data(config_path, force=args.force)
 
 
 def backup_workspace(args):
@@ -80,6 +80,12 @@ def cli():
         "--config-path",
         default=None,
         help="explicit config file path (overrides active context)"
+    )
+    restore_parser.add_argument(
+        "--force",
+        action="store_true",
+        default=False,
+        help="force restore from full archive even if the workspace is disabled"
     )
     restore_parser.set_defaults(func=restore_workspace)
 

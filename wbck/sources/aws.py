@@ -44,6 +44,21 @@ class AwsSource(BaseSource):
 
         self.perform_archive_cleanup()
 
+    def restore_archive_data(self):
+        """
+        restores the full workspace archive from the AWS s3 bucket
+        """
+
+        print("======================> Downloading archive {} from bucket {}".format(
+            self.archive_zip_name, self.BUCKET_NAME))
+
+        s3 = self._get_s3_client()
+        s3.download_file(self.BUCKET_NAME, self.archive_s3_key, self.archive_zip_name)
+
+        self.extract_from_archive_data()
+
+        self.perform_archive_cleanup()
+
     def backup_data(self):
         """
         backs up data to the AWS s3 bucket as per configuration

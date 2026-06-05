@@ -64,18 +64,22 @@ def backup_data(config_path):
             class_mapping[src].archive_data()
 
 
-def restore_data(config_path):
+def restore_data(config_path, force=False):
     """
     calls the appropriate restore data class depending
-    on enabled sources. Skips restoration if the workspace is disabled.
+    on enabled sources. Skips restoration if the workspace is disabled,
+    unless force=True in which case the full archive is restored instead.
     """
 
     with open(config_path, 'r') as f:
         config_data = json.load(f)
 
-    if not bool(config_data["enabled"]):
+    is_enabled = bool(config_data["enabled"])
+
+    if not is_enabled and not force:
         print("Skipping workspace '{}' — it is disabled and marked for archival. "
-              "Set enabled=1 in the config to restore it.".format(config_data["name"]))
+              "Set enabled=1 in the config to restore it, or use --force to restore from archive.".format(
+                  config_data["name"]))
         return
 
     class_mapping = {
@@ -88,5 +92,10 @@ def restore_data(config_path):
     clone_repositories(config_data)
 
     for src in enabled_sources:
-        print("Restoring data using {}".format(src))
-        class_mapping[src].restore_data()
+        if not is_enabled and force:
+            print("Force-restoring archive for workspace '{}' using {}".format(
+                config_data["name"], src))
+            class_mapping[src].restore_archive_data()
+        else:
+            print("Restoring data using {}".format(src))
+            class_mapping[src].restore_data()

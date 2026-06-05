@@ -34,6 +34,9 @@ class BaseSource(object):
     def restore_data(self):
         raise NotImplementedError()
 
+    def restore_archive_data(self):
+        raise NotImplementedError()
+
     def perform_cleanup(self):
         """
         performs cleanup of the artifacts generated during the backup process
@@ -87,6 +90,15 @@ class BaseSource(object):
         zipf = zipfile.ZipFile(self.archive_zip_name, 'w', zipfile.ZIP_DEFLATED)
         zipdir(workspace_dir, zipf, self.source_settings['files_to_exclude'])
         zipf.close()
+
+    def extract_from_archive_data(self):
+        """
+        extracts a full workspace archive directly to workspace_path,
+        restoring the complete workspace folder structure
+        """
+
+        with zipfile.ZipFile(self.archive_zip_name, 'r') as zip_ref:
+            zip_ref.extractall(self.workspace_path)
 
     def extract_from_compressed_data(self):
         """
