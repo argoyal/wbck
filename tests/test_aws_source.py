@@ -75,7 +75,7 @@ def test_backup_path_override_location(new_config, tmp_path):
     assert key == "custom/notes-backup.zip"
 
 
-def test_restore_path_downloads_and_deletes(new_config, tmp_path):
+def test_restore_path_downloads_and_deletes(new_config, tmp_path, monkeypatch):
     source = AwsSource(new_config)
     path_entry = {
         "folder_name": "notes",
@@ -102,10 +102,9 @@ def test_restore_path_downloads_and_deletes(new_config, tmp_path):
         mock_s3.download_file.side_effect = fake_download
         mock_client.return_value = mock_s3
 
-        import os
         work_dir = tmp_path / "work"
         work_dir.mkdir()
-        os.chdir(str(work_dir))
+        monkeypatch.chdir(work_dir)
         status = source.restore_path(path_entry)
 
     assert status == "success"
