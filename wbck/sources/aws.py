@@ -90,7 +90,9 @@ class AwsSource(BaseSource):
         s3.download_file(self.BUCKET_NAME, key, zip_name)
 
         try:
-            target = os.path.join(self.workspace_path, self.workspace_name)
+            parent_dir = os.path.dirname(path_entry.get("folder_path", ""))
+            target = os.path.join(self.workspace_path, self.workspace_name, parent_dir)
+            os.makedirs(target, exist_ok=True)
             with zipfile.ZipFile(zip_name, 'r') as zf:
                 zf.extractall(target)
             if not keep_remote:
