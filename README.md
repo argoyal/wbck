@@ -4,18 +4,22 @@
 
 ## Introduction
 
-Workspace Backup and Restoration Tool (wbck) is a simple utility designed to ease the process of changing machines without the fear of data loss during migration. It provides a seamless solution for backing up and restoring workspace configurations and repositories.
+Workspace Backup and Restoration Tool (wbck) is a utility designed to ease machine migrations and workspace setup without the fear of data loss. It backs up and restores your code folders, documents, and any other paths — each to the source that fits best (git remote, S3, or local disk).
 
-Whether you're transitioning to a new computer or setting up a development environment on another machine, wbck ensures that your workspace is replicated effortlessly, minimizing downtime and ensuring continuity in your workflow.
+Whether you're transitioning to a new machine or setting up a development environment elsewhere, wbck ensures your workspace is replicated exactly where it was, minimizing downtime and ensuring continuity in your workflow.
 
-I classify workspace as all the data associated to a specific project/company I have been part of. People might have different opinions of defining them and can structure it accordingly using the configuration files.
+A *workspace* is all the data associated with a specific project or company context. You can define as many workspaces as you need and switch between them with a single command.
 
 ## Features
 
-- **Configuration Driven**: Utilize a configuration file to specify the repositories you want to backup and restore, allowing for easy customization.
-- **Exact Cloning**: Restore your repositories exactly where they were before, ensuring consistency across machines.
-- **Workspace Contexts**: Switch between multiple workspace configurations without specifying a config file path on every command — similar to `kubectl config use-context`.
-- **Simple Installation**: Install wbck from the PyPI repository using pip, making it accessible and easy to set up.
+- **Per-path backup sources** — each folder in your workspace can back up to git, S3, or local storage independently.
+- **Git-aware backup** — pushes unpushed commits to the remote, and falls back to a zip archive for repos with no push access or untracked changes.
+- **Exact restoration** — each folder is restored to its configured path relative to the workspace root, preserving your directory structure.
+- **Resume-safe restore** — already-restored paths are skipped on re-runs, so a failed restore can be continued from where it left off.
+- **Workspace archival** — disabled workspaces are compressed into a single full archive for long-term storage.
+- **Dry-run mode** — validate all paths and surface per-file issues without performing any backup.
+- **Workspace contexts** — switch between multiple workspace configurations without specifying a config path on every command, similar to `kubectl config use-context`.
+- **Targeted operations** — back up or restore a single folder by name without touching the rest of the workspace.
 
 ## Installation
 
@@ -25,156 +29,194 @@ pip install wbck
 
 ```bash
 wbck --help
-usage: wbck [-h] {create,backup,restore,cache} ...
+usage: wbck [-h] [--version] {create,backup,restore,cache} ...
 
 Application to backup and restore my workspace data using config files
 
 Commands:
-  create              creates a new workspace
-  backup              backup your workspace
-  restore             restore your workspace
-  cache               manage workspace contexts
+  create    creates a new workspace
+  backup    backup your workspace
+  restore   restore your workspace
+  cache     manage workspace contexts
 ```
 
-## Usage
+## Configuration
 
-### 1. Configuration Setup
-
-Create a configuration file (`<workspace>_config.json`) in a configs directory. Here's an example configuration:
+Create a config file (`<workspace>_config.json`) in a configs directory. Here is a complete example:
 
 ```json
 {
-  "name": "",
+  "name": "my",
   "enabled": 1,
-  "workspace_path": "",
-  "repositories": [{
-    "clone_name": "workspace-backup",
-    "clone_path": "codes/internal",
-    "repo_url": "https://github.com/argoyal/workspace-backup.git"
-  }],
-  "source_settings": {
-    "enabled_sources": ["s3", "local"],
-    "folders_to_maintain": [],
-    "files_to_exclude": [],
+  "workspace_path": "/Users/arpit",
+  "default_source": "s3",
+  "paths_to_include": [
+    {
+      "folder_name": "portfolio-website",
+      "folder_path": "codes/portfolio-website",
+      "backup_source": ["git"],
+      "backup_location": "git@github.com:argoyal/portfolio-website.git",
+      "enabled": 1
+    },
+    {
+      "folder_name": "documents",
+      "folder_path": "documents",
+      "backup_source": ["s3"],
+      "enabled": 1
+    },
+    {
+      "folder_name": "notes",
+      "folder_path": "documents/notes",
+      "backup_source": ["local"],
+      "enabled": 1
+    }
+  ],
+  "paths_to_exclude": [".venv", "node_modules", "build", "dist"],
+  "source_credentials": {
     "s3": {
-      "bucket_name": "",
+      "root_path": "my-backup-bucket",
       "aws_key": "",
-      "aws_secret": ""
+      "aws_secret": "",
+      "aws_profile": "myaws"
     },
     "local": {
-      "local_path": ""
+      "root_path": "/Volumes/ExternalDrive/backups"
+    },
+    "git": {
+      "auth_method": "ssh"
     }
   }
 }
 ```
 
-| Parameter | Description | Value/s |
-|----------|----------|----------|
-| name   | Name of workspace you are dealing with   | str (eg. microsoft, google etc.)  |
-| enabled   | Disables execution of any command on this config file   | int (1 for enabled, 0 for disabled)   |
-| workspace_path   | Path where the workspace folder's root exist   | str (eg. $HOME/microsoft), $HOME needs to be expanded  |
-| repositories[].clone_name   | Name of the repository after cloned locally   | str   |
-| repositories[].clone_path   | Path where the repository should be cloned. The paths are relative to the workspace path root   | str (eg. codes/internal)  |
-| repositories[].repo_url   | Repository URL from where the cloning is to be done   | str (eg. https://github.com/argoyal/wbck)  |
-| source_settings.enabled_sources   | Sources for data backup. If you specify multiple, data will be stored in all of them   | list (s3, local)  |
-| source_settings.folders_to_maintain   | Folders that need to be compressed as zip for backup. Paths are relative to the workspace root folder   | list (eg. [documents/, 'data/'])  |
-| source_settings.files_to_exclude   | Files/folders that need to be excluded while backing up   | list  |
-| source_settings.s3.bucket_name   | Name of the bucket where backup is to be pushed   | str  |
-| source_settings.s3.aws_key   | AWS Key   | str  |
-| source_settings.s3.aws_secret   | AWS Secret   | str  |
-| source_settings.local.local_path   | Local path where the data backup needs to happen   | str  |
+### Config reference
 
-### 2. Workspace Contexts
+| Field | Description |
+|---|---|
+| `name` | Workspace identifier (e.g. `my`, `work`, `acme`) |
+| `enabled` | `1` = active workspace, `0` = archived (backup creates a single full-workspace zip) |
+| `workspace_path` | Absolute path to the directory that contains the workspace folder |
+| `default_source` | Fallback source (`s3` or `local`) used when a git push fails or for workspace archival |
+| `paths_to_exclude` | Folder/file names to skip when zipping (applied globally) |
 
-wbck supports switching between multiple workspace configurations without specifying `--config-path` on every command. Point wbck at a folder containing all your config files once, then switch between them by name.
+### `paths_to_include` entries
 
-#### Set the config folder
+| Field | Description |
+|---|---|
+| `folder_name` | Display name and prefix used for backup file naming |
+| `folder_path` | Path to the folder **relative to** `<workspace_path>/<name>` |
+| `backup_source` | List of sources: `"git"`, `"s3"`, `"local"` |
+| `backup_location` | Git remote URL (required when `backup_source` includes `"git"`) |
+| `enabled` | `0` skips this path during backup and restore |
+
+### `source_credentials`
+
+**S3:**
+
+| Field | Description |
+|---|---|
+| `root_path` | S3 bucket name |
+| `aws_profile` | AWS CLI profile name (preferred over key/secret) |
+| `aws_key` / `aws_secret` | AWS credentials (used if no profile is set) |
+
+**Local:**
+
+| Field | Description |
+|---|---|
+| `root_path` | Absolute path to the local backup directory |
+
+**Git:**
+
+| Field | Description |
+|---|---|
+| `auth_method` | `"ssh"` or `"https"` |
+
+## Usage
+
+### 1. Workspace Contexts
+
+Point wbck at a folder containing all your config files once, then switch between workspaces by name — no need to pass `--config-path` on every command.
 
 ```bash
+# Set the config folder
 wbck cache set --config-folder $HOME/.configs/
 # Config folder set to: /home/user/.configs/
-# Available configs: asterhq, microsoft
+# Available configs: my, work
 # Switch with: wbck cache use <name>
-```
 
-#### List available workspaces
-
-```bash
+# List available workspaces (* = active)
 wbck cache show
 # Config folder: /home/user/.configs/
 #
-#   * asterhq
-#     microsoft
-```
+#   * my
+#     work
 
-The `*` marks the currently active workspace.
+# Switch active workspace
+wbck cache use work
 
-#### Switch the active workspace
-
-```bash
-wbck cache use microsoft
-# Switched to: microsoft
-
-wbck cache show
-# Config folder: /home/user/.configs/
-#
-#     asterhq
-#   * microsoft
-```
-
-#### Clear the context cache
-
-```bash
+# Clear the context cache
 wbck cache clear
 ```
 
-#### Override per command
-
-You can always pass `--config-path` explicitly to bypass the active context for a single run:
+You can always override the active context for a single command:
 
 ```bash
 wbck backup --config-path /path/to/specific_config.json
 ```
 
-### 3. Backup Workspace
+### 2. Backup
 
 ```bash
-# Using the active context
+# Backup the active workspace
 wbck backup
 
-# Or with an explicit config path
-wbck backup --config-path $HOME/.configs/asterhq_config.json
+# Backup a specific workspace by name
+wbck backup my
+
+# Backup all workspaces in the config folder
+wbck backup --all
+
+# Backup a single folder only
+wbck backup --folder-name documents
+
+# Validate paths without performing the backup
+wbck backup --dry-run
 ```
 
-### 4. Restore Workspace
+**How git backup works:** wbck pushes any unpushed commits to the configured remote. If the repo has uncommitted changes or the remote is not writable, it commits everything to a local `local-dump` branch and falls back to a zip upload via `default_source`.
+
+**Dry-run** zips every file in each path to surface encoding or permission issues without uploading anything.
+
+### 3. Restore
 
 ```bash
-# Using the active context
+# Restore the active workspace
 wbck restore
 
-# Or with an explicit config path
-wbck restore --config-path $HOME/.configs/asterhq_config.json
+# Restore a specific workspace by name
+wbck restore my
+
+# Restore all workspaces in the config folder
+wbck restore --all
+
+# Restore a single folder only
+wbck restore --folder-name documents
+
+# Keep the backup on the remote after restoring
+wbck restore --keep-remote-data
+
+# Force restore a disabled (archived) workspace
+wbck restore --force
 ```
 
-### 5. Create Workspace
+**Resume safety:** if a restore run is interrupted, already-restored paths are automatically skipped on the next run, so you can re-run `wbck restore` to pick up from the failure point.
 
-Create a new workspace from the default folder template:
+**`--force`** restores from the full-workspace archive created when `enabled` is set to `0` in the config.
 
-```bash
-wbck create --name workspace --workspace-path $HOME/ --config-folder $HOME/.configs/
-```
+### 4. Create a New Workspace
 
 ```bash
-wbck create --help
-usage: wbck create [-h] --name NAME [--workspace-path WORKSPACE_PATH] --config-folder CONFIG_FOLDER
-
-optional arguments:
-  -h, --help            show this help message and exit
-  --name NAME           name of the new workspace
-  --workspace-path WORKSPACE_PATH
-                        path where the workspace needs to be created
-  --config-folder CONFIG_FOLDER
-                        path where the config for this workspace is
+wbck create --name myworkspace --workspace-path $HOME/ --config-folder $HOME/.configs/
 ```
 
 This creates the workspace directory at `<workspace-path>/<name>` and writes a starter config file to `<config-folder>/<name>_config.json`.
@@ -185,7 +227,7 @@ Contributions are welcome! Feel free to submit bug reports, feature requests, or
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
 
 ---
 
